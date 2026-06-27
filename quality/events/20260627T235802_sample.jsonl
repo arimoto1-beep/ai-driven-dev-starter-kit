@@ -1,0 +1,2 @@
+{"task_id": "sample", "event": "test_run_started", "command": ["python", "-m", "pytest"], "timestamp": "2026-06-27T23:58:02+09:00"}
+{"task_id": "sample", "event": "test_passed", "exit_code": 0, "timestamp": "2026-06-27T23:58:02+09:00"}
