@@ -97,9 +97,15 @@ C:\Users\aricy\AppData\Local\Python\bin\python.exe -m pytest tests\cli_hello_gre
 
 ## 最終判定
 
-`OK`
+OK
 
 理由: feature 実装と feature 単体テストは仕様・設計・テスト計画と整合しています。
+
+## 次工程移行判定
+
+GO
+
+理由: feature 実装、feature 単体テスト、仕様・設計・テスト計画の整合に未解決項目はありません。entrypoint、結合試験、command/app 全体確認は command/app 全体レビューで扱います。
 
 ## 作業後報告
 
