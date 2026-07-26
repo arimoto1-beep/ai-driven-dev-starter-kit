@@ -2,6 +2,8 @@
 
 このチュートリアルでは、実装済み feature `cli_text_counter` を題材に、変更要求を受けたときの安全な進め方を体験します。
 
+変更要求は、人から依頼される場合もあれば、コードを読んでいて自分で思いつく場合もあります。後者のように、バグなのか仕様変更なのか設計改善なのかが未確定な場合は、`prompts/analyze_code_change_impact.md` で分類と影響範囲を整理してから進めます。
+
 ---
 
 ## このチュートリアルの目的
@@ -20,7 +22,7 @@
 |---|---|---|---|
 | [010](010_simple_calculator.md) | simple_calculator | 初期状態から単一 feature を設計・実装・テスト・レビューする | 仕様書と tasks.md のみ用意済み |
 | [020](020_create_new_sample_from_scratch.md) | cli_text_tools（新規作成） | 新しい command/app と複数 feature の初期 docs 構造を作る | 完全にゼロから作る |
-| **030（このチュートリアル）** | **cli_text_counter** | **実装済み feature に対して仕様変更・軽微な機能追加・バグ修正・レビュー指摘反映を行う** | **docs / src / tests がすべて揃った完成済みサンプル** |
+| **030（このチュートリアル）** | **cli_text_counter** | **実装済み feature に対して仕様変更・軽微な機能追加・内部設計の改善・リファクタリング・類似機能間の整合性改善・レビュー指摘反映を行う（バグ修正は 040 を参照）** | **docs / src / tests がすべて揃った完成済みサンプル** |
 
 ---
 
@@ -77,6 +79,12 @@ AIに直させること自体が目的ではありません。変更対象、変
 
 AIも人間も、調査中・レビュー中・説明中に、ついで修正やこっそり修正を行いません。
 
+### 正本を決めてから、上流から下流へ進む
+
+変更前に、影響する資料を並べるだけで終わらせません。変更内容を正式に定義する資料（正本）を特定し、正本から下流へ順番に反映します。
+
+正本とは、その変更内容を最初に定義し、下流資料や実装が参照・具体化する基準となる正式資料です。最も上流かつ役割の合う資料を選ぶという意味であり、上流資料をすべて変更するという意味ではありません。変更不要な上流資料は、理由を示して更新しません。
+
 ### 人間が反映対象を判断する
 
 AIが出した修正候補や指摘をすべて反映するのではなく、人間が内容を確認したうえで反映する指摘と保留する指摘を判断します。
@@ -122,14 +130,23 @@ AIの作業後に、変更対象、変更理由、確認結果、未対応事項
 
 | 変更パターン | まず確認するもの | 更新候補 | 注意点 |
 |---|---|---|---|
-| **仕様変更** | `20_spec.md`、`10_overview.md` | `20_spec.md`、`21_design.md`、`22_flow.md`、`23_test_plan.md`、実装、テスト | 仕様変更は feature 全体に波及しやすい。ドキュメントから先に更新する |
+| **仕様変更** | `20_spec.md`、`10_overview.md` | `20_spec.md`、`21_design.md`、`22_flow.md`、`23_test_plan.md`、実装、テスト | 仕様変更は feature 全体に波及しやすい。正本は原則 `20_spec.md`。command/app の責務や feature 分割に影響する場合は `10_overview.md` から確認・更新する |
 | **軽微な機能追加** | `20_spec.md`、`21_design.md`、`23_test_plan.md` | `20_spec.md`、`21_design.md`、`23_test_plan.md`、実装、テスト | feature 責務の範囲内か確認する。範囲を超える場合は仕様変更として扱う |
 | **判定条件の変更** | `20_spec.md`、`23_test_plan.md` | `20_spec.md`、`23_test_plan.md`、実装、テスト | 境界値が変わる場合はテスト計画を先に整理する |
 | **出力項目の追加** | `20_spec.md`、`22_flow.md`、`entrypoint.py`、結合試験 | `20_spec.md`、`21_design.md`、`22_flow.md`、実装、テスト、entrypoint、entrypoint テスト、結合試験 | feature の戻り値変更は entrypoint と結合試験に影響する可能性が高い |
+| **内部設計の改善** | `21_design.md`、`22_flow.md`、feature 実装 | `21_design.md`、`22_flow.md`、実装、テスト | 外部動作が変わらなければ `21_design.md` を正本候補とし、`20_spec.md` は更新しない。呼び出し関係が変わる場合は `22_flow.md` へ反映する。設計書を先に更新してから実装する |
+| **動作を変えないリファクタリング** | `21_design.md`、`23_test_plan.md`、feature 実装、feature 単体テスト | `21_design.md`、実装、必要に応じてテスト | 外部動作を変えないことを既存テストで確認する。テストが実装詳細に依存していないかも確認する |
+| **類似機能間の実装方式の統一** | 対象と比較対象の `20_spec.md`、`21_design.md`、実装 | 統一対象に決めた feature の `21_design.md`、実装、テスト | 「他と違う」だけを理由に統一しない。差異が仕様由来かを先に確認し、どれを基準にするかは人間が決める。各 feature へ同じルールをばらまく前に、正本の配置を決める |
+| **複数 feature にまたがる標準化** | `10_overview.md`、対象 feature 群の `21_design.md`、実装 | 対象 feature ごとの `21_design.md`、実装、テスト | 一度に全 feature を変更せず、feature 単位で順番に進める。一か所だけ変えて新たな不統一を作らない。正本の配置が決まるまで横断変更を始めない |
+| **共通化候補** | `21_design.md`、`common_design/`、`docs/common/` | `docs/common/` の共通化提案 | AIが勝手に `src/common/` へ切り出さない。まず `docs/templates/30_common_proposal_template.md` で提案を整理し、人間が判断する。`common_design/` の役割（ファイル設計・データ設計・DB設計）に合わない内容を無理に入れない |
 | **バグ修正** | → [040_bug_fix_flow.md](040_bug_fix_flow.md) を参照 | — | バグ修正は常に 040 のフロー（バグ報告→調査→修正計画→人間承認→実装）に従う。この表の対象外 |
 | **レビュー指摘の反映** | `25_review_result.md`、`12_command_review_result.md` | 指摘内容による | 人間がどの指摘を反映するかを判断してからAIに依頼する |
 
 既存 feature の変更全般はこのチュートリアルで扱います。ただし、バグ修正は軽微なものも含め、必ず [040_bug_fix_flow.md](040_bug_fix_flow.md) のフロー（バグ報告→調査→修正計画→人間承認→実装）に従ってください。このチュートリアルで直接バグを修正する簡易パスは設けません。
+
+どの変更パターンに当たるか分からない場合は、この表で決め打ちせず、後述の「変更案の影響範囲を整理する」で `prompts/analyze_code_change_impact.md` を使って分類から整理してください。
+
+変更内容を定義する適切な正本が現在の構成に見つからない場合は、各 feature へ同じルールを重複記載したり、新しい文書を作ったりせず、人間判断に戻してください。
 
 ---
 
@@ -153,10 +170,12 @@ AIの作業後に、変更対象、変更理由、確認結果、未対応事項
 
 以下の順番で進めます。
 
+この例では利用者から見える動作が変わるため、`20_spec.md` が正本候補になります。実装や設計より先に仕様を更新し、そこから下流へ進めます。`10_overview.md` は、feature 分割や command/app の責務が変わらないため更新しません。
+
 ```text
-1. AIに影響範囲を整理させる（ファイルを変更しない）
-2. 人間が影響範囲を確認し、修正対象を決める
-3. 20_spec.md の更新をAIに依頼する
+1. AIに影響範囲と正本・更新順を整理させる（analyze_code_change_impact.md を参照。ファイルを変更しない）
+2. 人間が正本と更新順を確認し、修正対象を決める
+3. 正本の 20_spec.md の更新をAIに依頼する（更新内容を人間が確認する）
 4. 21_design.md の更新をAIに依頼する
 5. 23_test_plan.md の更新をAIに依頼する
 6. feature 実装と feature 単体テストの更新をAIに依頼する（implement_feature.md を参照）
@@ -169,47 +188,60 @@ AIの作業後に、変更対象、変更理由、確認結果、未対応事項
 
 ---
 
-## 変更要求の影響範囲を整理するプロンプト例
+## 変更案の影響範囲を整理する
 
-変更作業の最初のステップです。AIに影響範囲を整理させます。**このステップではファイルを変更しません。**
+変更作業の最初のステップです。`prompts/analyze_code_change_impact.md` を使って、AIに影響範囲を整理させます。**このステップではファイルを変更しません。**
 
-チャット例:
+このプロンプトは、変更案がバグなのか、仕様変更なのか、内部設計変更・リファクタリング・類似機能間の整合性改善・標準化・共通化候補なのかを分けて整理し、影響する資産と次に進むべきフローをチャットで報告します。
+
+### 例1: 機能追加の影響範囲を整理する
 
 ```text
-AGENTS.md を確認したうえで、実装済み feature に対する追加修正の影響範囲を整理してください。
+prompts/analyze_code_change_impact.md を参照してください。
 
-対象:
-- command/app: cli_text_counter
-- feature: text_counter
-- 変更要求: 文字数カウントで、空白を除外して数えるオプションを追加したい
-
-確認対象:
-- docs/cli_text_counter/10_overview.md
-- docs/cli_text_counter/tasks.md
-- docs/cli_text_counter/features/text_counter/tasks.md
-- docs/cli_text_counter/features/text_counter/20_spec.md
-- docs/cli_text_counter/features/text_counter/21_design.md
-- docs/cli_text_counter/features/text_counter/22_flow.md
-- docs/cli_text_counter/features/text_counter/23_test_plan.md
-- docs/cli_text_counter/features/text_counter/24_review_checklist.md
-- src/cli_text_counter/features/text_counter.py
-- tests/cli_text_counter/features/test_text_counter.py
-- src/cli_text_counter/entrypoint.py
-- tests/cli_text_counter/test_entrypoint_text_counter.py
-- tests/cli_text_counter/test_integration_text_counter.py
-
-確認してほしいこと:
-- 変更要求が既存 feature の責務内に収まるか
-- 更新が必要になりそうな docs
-- 更新が必要になりそうな src / tests
-- entrypoint や結合試験に影響するか
-- 先に仕様変更すべきか、実装変更に進めるか
-- 人間が判断すべき点
-
-このステップではファイルを変更しないでください。
+対象 command/app: cli_text_counter
+対象 feature: text_counter
+変更したい内容: 文字数カウントで、空白を除外して数えるオプションを追加したい
+変更したい理由または違和感: 利用者から「空白なし文字数も知りたい」という要望があった
+関連する実装ファイル: src/cli_text_counter/features/text_counter.py
+関連するテストファイル: tests/cli_text_counter/features/test_text_counter.py
+類似機能または比較対象: なし
+外部から見える動作を変えたいか: 変えたい
+調査対象範囲: cli_text_counter 全体（entrypoint と結合試験を含む）
+補足条件: 分析だけ行い、ファイルは変更しないでください。
 ```
 
-AIから影響範囲の整理が報告されたら、人間が内容を確認して次のステップに進みます。
+### 例2: 正常に動いているコードの改善案を整理する
+
+正常に動いていても、内部構造を改善したい場合や、類似機能と実装方式をそろえたい場合に使います。
+
+```text
+prompts/analyze_code_change_impact.md を参照してください。
+
+対象 command/app: cli_text_counter
+対象 feature: text_counter
+変更したい内容: 入力チェックとエラーの返し方を、cli_hello_greeting の greeting と同じ方式にそろえたい
+変更したい理由または違和感: 動作は仕様どおりだが、この feature だけ書き方が違って読みにくい
+関連する実装ファイル: src/cli_text_counter/features/text_counter.py
+関連するテストファイル: tests/cli_text_counter/features/test_text_counter.py
+類似機能または比較対象: src/cli_hello_greeting/features/greeting.py
+外部から見える動作を変えたいか: 変えたくない
+調査対象範囲: cli_text_counter と cli_hello_greeting の feature 実装
+補足条件: 分析だけ行い、ファイルは変更しないでください。
+```
+
+分析結果には、次の内容も含まれます。
+
+- 変更内容の正本（変更内容を定義すべき最上流かつ役割の合う正式資料）
+- 変更不要と判断した上流資料と、その理由
+- 上流から下流への更新順
+- 正本の配置に関する人間判断事項（適切な正本が存在しない場合を含む）
+
+AIから分析結果（総合判定・変更の分類・影響する資産・変更の正本と更新順・推奨する次の作業）が報告されたら、人間が正本と更新順を確認して次のステップに進みます。
+
+- バグ候補と分類された場合は、このチュートリアルではなく [040_bug_fix_flow.md](040_bug_fix_flow.md) のフローへ進みます
+- 仕様変更・機能追加・内部設計変更・リファクタリング・整合性改善の場合は、このチュートリアルの以降の手順で進めます
+- 共通化候補の場合は、`docs/templates/30_common_proposal_template.md` を使った提案作成を別作業として依頼します。AIが `src/common/` を勝手に変更することはありません
 
 ---
 

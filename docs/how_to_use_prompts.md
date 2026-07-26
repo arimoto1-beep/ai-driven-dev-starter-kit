@@ -120,6 +120,7 @@ prompts/implement_feature.md を参照してください。
 | `prompts/review_feature.md` | feature 単体レビューを行う | `<対象機能フォルダ>/25_review_result.md` |
 | `prompts/review_command.md` | command/app 全体レビューを行う | `docs/<command_or_app_name>/12_command_review_result.md` |
 | `prompts/review_context.md` | `docs/context/` を横断探索し、正式資料への反映候補・矛盾候補・未決事項・却下案の混入候補・人間確認事項を候補として整理する（候補のみ。正式資料・docs/context/ は変更しない） | チャットで報告（ファイル出力なし） |
+| `prompts/analyze_code_change_impact.md` | コード起点の変更案を、バグ・仕様変更・内部設計変更・リファクタリング・類似機能間の整合性改善・標準化・共通化候補などに整理し、影響範囲、変更内容の正本となる最上流の正式資料、上流から下流への更新順、次の作業を報告する（ファイルは変更しない） | チャットで報告（ファイル出力なし） |
 | `prompts/create_bug_report.md` | バグ報告書を作成する（原因調査・修正はしない） | `docs/<command_or_app_name>/bugs/<bug_id>/10_bug_report.md` |
 | `prompts/investigate_bug.md` | バグ原因を調査し調査書を作成する（修正はしない） | `docs/<command_or_app_name>/bugs/<bug_id>/20_bug_investigation.md` |
 | `prompts/create_bug_fix_plan.md` | バグ修正計画書を作成する（承認待ち。修正はしない） | `docs/<command_or_app_name>/bugs/<bug_id>/30_bug_fix_plan.md` |
@@ -241,6 +242,21 @@ prompts/review_feature.md を参照してください。
 レビュー結果ファイル: docs/cli_simple_calculator/features/calculator/25_review_result.md
 補足条件: レビューだけ行い、実装ファイルとテストファイルは変更しないでください。
 ```
+
+```text
+prompts/analyze_code_change_impact.md を参照してください。
+
+対象 command/app: cli_text_counter
+対象 feature: text_counter
+変更したい内容: 入力チェックの書き方を、他の feature と同じ方式にそろえたい
+変更したい理由または違和感: 正常に動いているが、この feature だけ例外の投げ方が違う気がする
+関連する実装ファイル: src/cli_text_counter/features/text_counter.py
+類似機能または比較対象: src/cli_hello_greeting/features/greeting.py
+外部から見える動作を変えたいか: 変えたくない
+補足条件: 分析だけ行い、ファイルは変更しないでください。
+```
+
+分析結果で正本と更新順を確認してから、個別の文書更新や実装を別作業として依頼します。
 
 ```text
 prompts/review_command.md を参照してください。

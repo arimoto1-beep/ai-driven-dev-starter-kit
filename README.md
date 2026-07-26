@@ -27,6 +27,7 @@ AIには小さな機能単位で実装を依頼し、人間が段階的に確認
 - `10_overview.md` を起点に、コマンド/アプリ全体と feature 分割を整理する流れ
 - 必要に応じて、entrypoint から feature を束ねる結合試験計画を作る流れ
 - バグをいきなり修正せず、報告 → 調査 → 修正計画 → 承認 → 実装の順に進む流れ
+- コードを見て思いついた変更案を、バグ・仕様変更・設計改善・リファクタリング・標準化・共通化候補に整理してから作業に入る流れ
 - `24_review_checklist.md` の実装着手承認欄を人間が確認し、承認なしでは feature 実装に進まない流れ
 
 ---
@@ -60,6 +61,9 @@ ai-driven-dev-starter-kit/
 │  │  └─ ai_driven_development.md
 │  ├─ context/                          ← 補助コンテキスト（確定仕様ではない）
 │  │  ├─ README.md
+│  │  ├─ ai_work_logs/                  ← AI作業ログ（確定仕様ではない）
+│  │  │  ├─ README.md
+│  │  │  └─ <date>_<task_id>_<summary>.md
 │  │  └─ rejected_verbose_option.md
 │  ├─ common/
 │  │  └─ README.md
@@ -82,7 +86,8 @@ ai-driven-dev-starter-kit/
 │  │  ├─ 31_file_design_template.md
 │  │  ├─ 32_data_design_template.md
 │  │  ├─ 33_db_design_template.md
-│  │  └─ context_note_template.md
+│  │  ├─ context_note_template.md
+│  │  └─ ai_work_log_template.md
 │  ├─ tutorials/
 │  │  ├─ 010_simple_calculator.md
 │  │  ├─ 020_create_new_sample_from_scratch.md
@@ -147,6 +152,7 @@ ai-driven-dev-starter-kit/
 │  ├─ review_feature.md
 │  ├─ review_command.md
 │  ├─ review_context.md
+│  ├─ analyze_code_change_impact.md      ← コード起点の変更案の影響範囲を整理する
 │  ├─ create_bug_report.md
 │  ├─ investigate_bug.md
 │  ├─ create_bug_fix_plan.md
@@ -276,6 +282,20 @@ feature 実装に進む前に、`24_review_checklist.md` の末尾にある実�
 
 ---
 
+## コード起点の変更検討
+
+コードを読んでいて変更を思いついた時点では、それがバグなのか、仕様変更なのか、設計改善・リファクタリング・類似機能間の整合性改善・標準化・共通化候補なのかが未確定な場合があります。仕様どおり正常に動いていても、内部構造を改善したい場合や、類似機能と実装方式をそろえたい場合があります。
+
+分類が未確定なまま作業を始めず、まず `prompts/analyze_code_change_impact.md` で影響範囲を整理します。このプロンプトはファイルを変更せず、変更の分類・影響する資産・次に進むべきフローをチャットで報告します。
+
+分析では、影響するファイルを列挙するだけでなく、変更内容を定義すべき最上流かつ役割の合う正式資料を「正本」として特定します。人間が正本と更新順を確認した後、上流から下流へ順番に反映します。上流資料を形式的にすべて変更するわけではなく、変更不要な上流資料は理由を示して更新しません。現在の構成に適切な正本がない場合は、AIが新しい資料を作らず人間判断に戻します。詳しい判断基準は `prompts/analyze_code_change_impact.md` と `AGENTS.md` を参照してください。
+
+分析結果を人間が確認したうえで、バグ候補ならバグ修正フローへ、仕様変更なら仕様変更の流れへ進みます。共通化候補の場合も、AIが `src/common/` を勝手に変更することはありません。
+
+実装済み feature に対する変更全般の進め方は `docs/tutorials/030_update_existing_feature.md` を参照してください。
+
+---
+
 ## バグ修正フロー
 
 バグをいきなり修正せず、以下の順番で進めてください。
@@ -391,7 +411,7 @@ entrypoint の分離、結合試験、3層レビュー、common_design は、実
 |---|---|
 | `010_simple_calculator.md` | 既存の初期状態サンプル（cli_simple_calculator）を使って進める。単一 feature の設計・実装・テスト・レビューを体験する。 |
 | `020_create_new_sample_from_scratch.md` | 新しいサンプルを1から作る。複数 feature に分ける 10_overview.md の作り方と、docs / features / tasks.md の初期構造を体験する。 |
-| `030_update_existing_feature.md` | 実装済み feature に対して、仕様変更・軽微な機能追加・バグ修正・レビュー指摘反映を安全に行う流れを確認する。 |
+| `030_update_existing_feature.md` | 実装済み feature に対して、仕様変更・軽微な機能追加・内部設計の改善・リファクタリング・類似機能間の整合性改善・レビュー指摘反映を安全に行う流れを確認する。コード起点の変更案は `analyze_code_change_impact.md` で分類・影響範囲を整理してから進める。バグ修正は 040 を参照。 |
 | `040_bug_fix_flow.md` | バグ修正専用フロー。報告・調査・修正計画・人間承認・実装の順番を想定バグを使って確認する。 |
 
 `cli_text_tools` はリポジトリに最初から配置されているサンプルではありません。020 チュートリアルの中で読者が作成する題材です。

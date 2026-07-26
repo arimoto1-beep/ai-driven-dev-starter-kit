@@ -74,6 +74,7 @@ docs/
 | `20_bug_investigation.md` | 仕様・設計・実装・テストを確認し、原因仮説と影響範囲を整理する。修正はしない |
 | `30_bug_fix_plan.md` | 修正対象、テスト方針、確認コマンド、人間承認欄を整理する。承認前に実装しない |
 | `docs/context/` | 会議メモ・未決事項・却下案などの補助資料。確定仕様ではなく、レビュー・バグ調査・任意調査の確認トリガーとして参照する |
+| `docs/context/ai_work_logs/` | AIへの依頼内容、確認したファイル、更新内容、更新しなかった内容と理由、確認結果、残課題を記録する補助ログ。確定仕様ではなく、人間の明示指示がある場合に作成する |
 
 `25_review_result.md` は feature 単体の仕様、設計、実装、単体テストを確認するためのレビュー結果です。
 `12_command_review_result.md` は overview、entrypoint、結合試験、全体テスト、feature 単体レビュー結果を確認するためのレビュー結果です。
@@ -105,6 +106,7 @@ docs/
 | `20_bug_investigation.md` | `docs/templates/20_bug_investigation_template.md` |
 | `30_bug_fix_plan.md` | `docs/templates/30_bug_fix_plan_template.md` |
 | `docs/context/` 配下のメモ | `docs/templates/context_note_template.md` |
+| `docs/context/ai_work_logs/<date>_<task_id>_<summary>.md` | `docs/templates/ai_work_log_template.md` |
 
 ---
 
@@ -207,6 +209,8 @@ feature の詳細ロジック、正常系、異常系、境界値などを確認
 詳しくは `docs/how_to_use_prompts.md` を参照してください。
 
 `review_feature_source.md` は `implement_feature.md` 直後の中間チェック用プロンプトです。実装ファイルとテストファイルを仕様・設計・テスト計画と照合し、修正候補をチャットで報告します。ファイルは変更しません。`25_review_result.md` も作成しません。正式なレビュー結果は `review_feature.md` で行います。
+
+`analyze_code_change_impact.md` は、コードを読んでいて思いついた変更案の入口プロンプトです。バグなのか、仕様変更なのか、内部設計変更・リファクタリング・類似機能間の整合性改善・標準化・共通化候補なのかが未確定な段階で、現在の仕様・設計・実装と変更案を分けて整理し、影響範囲と次に進むべき既存フローをチャットで報告します。あわせて、変更内容を定義すべき最上流かつ役割の合う正式資料（正本）と、正本から下流への更新順を整理します。適切な正本が現在の構成に存在しない場合は、新しい資料を作らず人間判断事項として報告します。ファイルは変更しません。採用可否と進むフローは人間が判断し、バグ候補はバグ修正フローへ、仕様変更は仕様変更ルールへ接続します。
 
 `review_context.md` は `docs/context/` の横断探索専任プロンプトです。通常レビューから探索責務を分離し、正式資料への反映候補・矛盾候補・未決事項・却下案の混入候補・人間確認事項を候補として整理してチャットで報告します。正式資料・`docs/context/`・`bugs/` 配下のいずれも変更しません。採用・却下・保留は人間が判断し、採用分だけを別作業として正式資料へ反映します。
 
