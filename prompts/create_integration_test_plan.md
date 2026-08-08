@@ -12,6 +12,24 @@ feature 単体の詳細ロジックは、各 feature の `23_test_plan.md` と�
 
 このプロンプトファイルは直接書き換えず、チャットでこのファイルのパスと「利用者が指定する項目」を指定して使います。
 
+## 必須参照ルール
+
+この節は、この task で必ず読むルール文書**一覧**の正本です。各ルールの**内容**は、ここに列挙したルール文書を正本とします。このプロンプトが core や project を再定義するものではありません。
+
+`## 参照するファイル` は今回の作業対象資料であり、このルール文書一覧とは役割が異なります。
+
+### 作業開始時に読む
+
+- `docs/rules/core/10_workflow.md`
+- `docs/rules/project/15_document_templates.md`
+- `docs/rules/project/40_testing_rules.md`
+
+### 作業完了時に読む
+
+- `docs/rules/core/50_records_and_reporting.md`
+
+---
+
 ## 利用者が指定する項目
 
 利用者は、チャットで以下を指定します。
@@ -25,7 +43,6 @@ feature 単体の詳細ロジックは、各 feature の `23_test_plan.md` と�
 
 ## 参照するファイル
 
-- `AGENTS.md`
 - `docs/templates/11_integration_test_plan_template.md`
 - `docs/<command_or_app_name>/10_overview.md`
 - `src/<command_or_app_name>/entrypoint.py`
@@ -71,15 +88,14 @@ feature 単体の詳細ロジックは、各 feature の `23_test_plan.md` と�
 
 ## 作業範囲
 
-1. `AGENTS.md` を確認してください
-2. `docs/templates/11_integration_test_plan_template.md` を確認してください
-3. `docs/<command_or_app_name>/10_overview.md` を確認してください
-4. `src/<command_or_app_name>/entrypoint.py` を確認してください
-5. 対象 feature の設計ドキュメントを必要に応じて確認してください
-6. entrypoint から feature を束ねて呼び出す観点を整理してください
-7. 単体試験と結合試験の役割を分けてください
-8. `docs/templates/11_integration_test_plan_template.md` の見出し構成を維持して `11_integration_test_plan.md` を作成または更新してください
-9. 不明点がある場合は、勝手に決めず `仮定` として明記するか、確認事項として提示してください
+1. `docs/templates/11_integration_test_plan_template.md` を確認してください
+2. `docs/<command_or_app_name>/10_overview.md` を確認してください
+3. `src/<command_or_app_name>/entrypoint.py` を確認してください
+4. 対象 feature の設計ドキュメントを必要に応じて確認してください
+5. entrypoint から feature を束ねて呼び出す観点を整理してください
+6. 単体試験と結合試験の役割を分けてください
+7. `docs/templates/11_integration_test_plan_template.md` の見出し構成を維持して `11_integration_test_plan.md` を作成または更新してください
+8. 不明点がある場合は、勝手に決めず `仮定` として明記するか、確認事項として提示してください
 
 ## 結合試験の考え方
 
@@ -157,7 +173,7 @@ feature 単体の詳細ロジックは、各 feature の `23_test_plan.md` と�
 ## レビュー補助メモ
 
 作業後の報告に、レビュー補助メモを含めてください。
-記載項目とルールは `AGENTS.md` の「レビュー補助メモ」に従います（このプロンプトには定義を複製しません）。
+記載項目とルールは `docs/rules/core/50_records_and_reporting.md` の「レビュー補助メモ」に従います（このプロンプトには定義を複製しません）。
 
 レビュー補助メモは作業完了報告（チャット）に出力します。`tasks.md` には書きません。
 

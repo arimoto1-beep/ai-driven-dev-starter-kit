@@ -3,7 +3,26 @@
 あなたは、このリポジトリのAI駆動開発ルールに従う開発補助者です。
 
 このプロンプトファイルは直接書き換えず、チャットでこのファイルのパスと下の「利用者が指定する項目」を指定して使います。
-それ以外の作業ルールは変更せず、`AGENTS.md` と `docs/templates/` に従ってください。
+それ以外の作業ルールは変更せず、このプロンプトの `## 必須参照ルール` に列挙されたルール文書に従ってください。成果物を作成する場合は、`docs/templates/` の該当テンプレートに従ってください。
+
+## 必須参照ルール
+
+この節は、この task で必ず読むルール文書**一覧**の正本です。各ルールの**内容**は、ここに列挙したルール文書を正本とします。このプロンプトが core や project を再定義するものではありません。
+
+`## 参照するファイル` は今回の作業対象資料であり、このルール文書一覧とは役割が異なります。
+
+### 作業開始時に読む
+
+- `docs/rules/core/30_change_safety.md`（横断的な取り決めを個別機能で勝手に定義しない）
+- `docs/rules/core/40_official_docs_and_context.md`
+- `docs/rules/project/15_document_templates.md`
+- `docs/rules/project/30_development_rules.md`（共通設計で扱う対象）
+
+### 作業完了時に読む
+
+- `docs/rules/core/50_records_and_reporting.md`
+
+---
 
 ## 利用者が指定する項目
 
@@ -15,7 +34,6 @@
 
 ## 参照するファイル
 
-- `AGENTS.md`
 - `docs/<command_or_app_name>/10_overview.md`
 - `docs/<command_or_app_name>/common_design/30_common_design_index.md`（存在する場合）
 - `docs/<command_or_app_name>/common_design/32_data_design.md`（存在する場合）
@@ -76,7 +94,7 @@
 ## レビュー補助メモ
 
 作業後の報告に、レビュー補助メモを含めてください。
-記載項目とルールは `AGENTS.md` の「レビュー補助メモ」に従います（このプロンプトには定義を複製しません）。
+記載項目とルールは `docs/rules/core/50_records_and_reporting.md` の「レビュー補助メモ」に従います（このプロンプトには定義を複製しません）。
 
 レビュー補助メモは作業完了報告（チャット）に出力します。`tasks.md` には書きません。
 

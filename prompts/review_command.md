@@ -6,6 +6,26 @@ feature 単体レビューは `prompts/review_feature.md` の範囲です。こ�
 
 ---
 
+## 必須参照ルール
+
+この節は、この task で必ず読むルール文書**一覧**の正本です。各ルールの**内容**は、ここに列挙したルール文書を正本とします。このプロンプトが core や project を再定義するものではありません。
+
+`## 参照するファイル` は今回の作業対象資料であり、このルール文書一覧とは役割が異なります。
+
+### 作業開始時に読む
+
+- `docs/rules/core/20_approval_and_review.md`（レビューと修正の分離、次工程移行判定 `GO` / `条件付きGO` / `STOP` の定義）
+- `docs/rules/core/40_official_docs_and_context.md`（正式資料と補助コンテキストの扱い）
+- `docs/rules/project/25_review_policy.md`（レビュー結果の評価値）
+- `docs/rules/project/30_development_rules.md`（entrypoint を薄く保つ規約、`src/common/` の扱いの判定基準）
+- `docs/rules/project/40_testing_rules.md`
+
+### 作業完了時に読む
+
+- `docs/rules/core/50_records_and_reporting.md`
+
+---
+
 ## 利用者が指定する項目
 
 - コマンド/アプリ名: `<command_or_app_name>`
@@ -22,7 +42,6 @@ feature 単体レビューは `prompts/review_feature.md` の範囲です。こ�
 
 必ず現在の以下を読み直してください。
 
-- `AGENTS.md`
 - `docs/<command_or_app_name>/10_overview.md`
 - `docs/<command_or_app_name>/11_integration_test_plan.md`
 - `src/<command_or_app_name>/entrypoint.py`
@@ -59,6 +78,8 @@ feature 単体レビューは `prompts/review_feature.md` の範囲です。こ�
 
 ## 変更してはいけないファイル
 
+この節は、**今回の task で変更を許可されていないファイル**です。project が定める**保護対象**（`docs/rules/project/50_ai_permissions.md`）とは別のレイヤであり、両方を満たす必要があります。
+
 レビュー結果ファイル以外を変更しないでください。
 ただし、変更してよいファイルに記載した `tasks.md` の必要最小限の更新は例外です。
 
@@ -87,16 +108,15 @@ feature 単体レビューは `prompts/review_feature.md` の範囲です。こ�
 
 ## 作業手順
 
-1. `AGENTS.md` を確認してください
-2. `docs/<command_or_app_name>/10_overview.md` を確認してください
-3. feature 分割と feature 単体レビュー結果を確認してください
-4. `src/<command_or_app_name>/entrypoint.py` を確認してください
-5. `tests/<command_or_app_name>/test_entrypoint_<short_name>.py` を確認してください
-6. `docs/<command_or_app_name>/11_integration_test_plan.md` を確認してください
-7. `tests/<command_or_app_name>/test_integration_<short_name>.py` を確認してください
-8. 必要に応じて feature の 20_spec.md から 24_review_checklist.md まで、実装、単体テストを確認してください
-9. `python -m pytest` または利用者が指定したテストコマンドを実行し、全体テスト結果を確認してください
-10. レビュー結果を `docs/<command_or_app_name>/12_command_review_result.md` に作成または上書き更新してください
+1. `docs/<command_or_app_name>/10_overview.md` を確認してください
+2. feature 分割と feature 単体レビュー結果を確認してください
+3. `src/<command_or_app_name>/entrypoint.py` を確認してください
+4. `tests/<command_or_app_name>/test_entrypoint_<short_name>.py` を確認してください
+5. `docs/<command_or_app_name>/11_integration_test_plan.md` を確認してください
+6. `tests/<command_or_app_name>/test_integration_<short_name>.py` を確認してください
+7. 必要に応じて feature の 20_spec.md から 24_review_checklist.md まで、実装、単体テストを確認してください
+8. `python -m pytest` または利用者が指定したテストコマンドを実行し、全体テスト結果を確認してください
+9. レビュー結果を `docs/<command_or_app_name>/12_command_review_result.md` に作成または上書き更新してください
 
 ## 共通設計書との整合確認
 
@@ -154,26 +174,33 @@ feature 単体レビューは `prompts/review_feature.md` の範囲です。こ�
 
 レビュー結果の最後に、以下のいずれかを記録してください。
 
+ここに記載する値は出力形式上の列挙であり、**定義の正本は `docs/rules/project/25_review_policy.md` です。**
+
 - `OK`: 大きな問題なし
 - `軽微な指摘あり`: 軽微な修正または確認事項がある
 - `要修正`: 実装、テスト、ドキュメントの修正が必要
 - `要仕様確認`: 仕様に戻って確認が必要
 
+`軽微な指摘あり` は成果物の状態を表すものであり、これを理由に次工程移行判定を `GO` にしてはいけません。
+
 ### 次工程移行判定
 
 上記の判定に加えて、次工程へ進めるかどうかを以下のいずれかで記録してください。
+
+**判定値そのものの定義と、STOP / 条件付きGO の使い分けの正本は `docs/rules/core/20_approval_and_review.md` です。**
 
 - `GO`：次工程へ進んでよい
 - `条件付きGO`：未解決項目・後続工程への影響・見直し条件を明記したうえで進んでよい
 - `STOP`：次工程へ進んではならない。何を解決すれば進めるかを明記して停止する
 
-要検討項目・未解決項目・人間判断待ち項目が残っている場合は、原則として `STOP` です。
+人間判断待ち、承認の前提となる未決事項、安全に次工程へ進めない未決事項、または整理されていない未解決事項が残っている場合は `STOP` です。
 「要検討として記録した」ことは、「解決した」ことではありません。
 
-条件付きGOとする場合は、以下を必ず明記してください。
+条件付きGOとする場合は、以下の6項目を必ず明記してください。
 
 - 未解決項目
 - 仮置きする内容と理由
+- 条件付きでも進める理由
 - 後続工程への影響
 - 見直しが必要になる条件
 - 人間判断が必要かどうか

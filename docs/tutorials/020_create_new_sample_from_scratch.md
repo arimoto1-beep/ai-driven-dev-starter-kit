@@ -37,7 +37,8 @@ entrypoint 実装まで進める場合は、`010_simple_calculator.md` や既存
 このチュートリアルを始める前に、以下を確認してください。
 
 - `README.md` で全体像を確認済み
-- `AGENTS.md` を一読済み
+- `AGENTS.md`（AIの薄い入口）を一読済み
+- `docs/rules/README.md` でルール体系の全体像を確認済み
 - `docs/how_to_use_prompts.md` を一読済み
 
 完成形の参考として、以下を確認しておくと理解が深まります（任意）。

@@ -39,6 +39,7 @@ feature 単体の詳細ロジックは `tests/cli_hello_greeting/features/test_g
 - `--name` をCLI引数として受け取れること
 - `features.greeting.create_greeting` を呼び出せること
 - 生成されたあいさつ文を標準出力に出せること
+- 標準出力がUTF-8として扱えること
 - 正常系で終了コード `0` になること
 - `--name` 未指定時に終了コードが非ゼロになること
 - feature 固有ロジックを `entrypoint.py` に持ちすぎていないこと
@@ -56,6 +57,8 @@ feature 単体の詳細ロジックは `tests/cli_hello_greeting/features/test_g
 - `tests/cli_hello_greeting/test_integration_greeting.py` に実装する
 - `sys.executable` を使って現在のPythonで `entrypoint.py` を実行する
 - 標準出力と終了コードを確認する
+- subprocessで標準出力をUTF-8としてデコードする
+- 実装がUTF-8を保証していることを日本語出力ケースで確認する
 - 異常系では `argparse` の詳細なメッセージまでは固定しない
 
 ## 単体試験との役割分担

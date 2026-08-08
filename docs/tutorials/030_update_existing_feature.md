@@ -85,6 +85,8 @@ AIも人間も、調査中・レビュー中・説明中に、ついで修正や
 
 正本とは、その変更内容を最初に定義し、下流資料や実装が参照・具体化する基準となる正式資料です。最も上流かつ役割の合う資料を選ぶという意味であり、上流資料をすべて変更するという意味ではありません。変更不要な上流資料は、理由を示して更新しません。
 
+この考え方のルール上の正本は `docs/rules/core/10_workflow.md`、判断手順は `prompts/analyze_code_change_impact.md` です。
+
 ### 人間が反映対象を判断する
 
 AIが出した修正候補や指摘をすべて反映するのではなく、人間が内容を確認したうえで反映する指摘と保留する指摘を判断します。
@@ -274,6 +276,7 @@ AGENTS.md を確認したうえで、以下の変更を行ってください。
 - docs/templates/
 - prompts/
 - AGENTS.md
+- docs/rules/
 - README.md
 
 補足条件: 仕様は 20_spec.md に先に反映してください。entrypoint への影響は後続の作業で扱います。
@@ -337,6 +340,7 @@ AGENTS.md を確認したうえで、以下のレビュー指摘を反映して�
 - docs/cli_text_counter/features/text_counter/25_review_result.md（このファイルは再レビュー時に上書きされる）
 - prompts/
 - AGENTS.md
+- docs/rules/
 - README.md
 - docs/templates/
 

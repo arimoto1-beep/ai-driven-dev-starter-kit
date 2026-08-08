@@ -1,4 +1,5 @@
 import argparse
+import sys
 
 try:
     from cli_hello_greeting.features.greeting import create_greeting
@@ -13,6 +14,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    sys.stdout.reconfigure(encoding="utf-8")
     args = parse_args(argv)
     greeting = create_greeting(args.name)
     print(greeting)

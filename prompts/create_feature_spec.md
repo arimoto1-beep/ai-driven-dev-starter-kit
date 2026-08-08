@@ -6,7 +6,26 @@
 
 このプロンプトファイルは直接書き換えず、チャットでこのファイルのパスと「利用者が指定する項目」を指定して使います。
 
-それ以外の作業ルールは変更せず、`AGENTS.md`、対象コマンド/アプリの `10_overview.md`、`docs/templates/` に従ってください。
+それ以外の作業ルールは変更せず、このプロンプトの `## 必須参照ルール` に列挙されたルール文書に従ってください。成果物を作成する場合は、`docs/templates/` の該当テンプレートに従ってください。
+
+## 必須参照ルール
+
+この節は、この task で必ず読むルール文書**一覧**の正本です。各ルールの**内容**は、ここに列挙したルール文書を正本とします。このプロンプトが core や project を再定義するものではありません。
+
+`## 参照するファイル` は今回の作業対象資料であり、このルール文書一覧とは役割が異なります。
+
+### 作業開始時に読む
+
+- `docs/rules/core/10_workflow.md`
+- `docs/rules/core/40_official_docs_and_context.md`
+- `docs/rules/project/10_document_structure.md`
+- `docs/rules/project/15_document_templates.md`
+
+### 作業完了時に読む
+
+- `docs/rules/core/50_records_and_reporting.md`
+
+---
 
 ## 利用者が指定する項目
 
@@ -22,7 +41,6 @@
 
 ## 参照するファイル
 
-- `AGENTS.md`
 - `docs/<command_or_app_name>/10_overview.md`
 - `docs/templates/20_spec_template.md`
 
@@ -142,15 +160,14 @@
 
 ## 作業範囲
 
-1. `AGENTS.md` を確認してください
-2. `docs/<command_or_app_name>/10_overview.md` を確認してください
-3. `docs/templates/20_spec_template.md` を確認してください
-4. 対象機能フォルダを確認してください
-5. 利用者が指定した項目を確認してください
-6. 対象 feature が `10_overview.md` の目的・Boundary・feature 分割方針と矛盾しないか確認してください
-7. 情報が不足している場合は、確認事項だけを提示してください
-8. 情報がそろっている場合のみ、`docs/templates/20_spec_template.md` の見出し構成を維持して `20_spec.md` を作成または更新してください
-9. 不明点を補う必要がある場合は、勝手に決めず `仮定` として明記してください
+1. `docs/<command_or_app_name>/10_overview.md` を確認してください
+2. `docs/templates/20_spec_template.md` を確認してください
+3. 対象機能フォルダを確認してください
+4. 利用者が指定した項目を確認してください
+5. 対象 feature が `10_overview.md` の目的・Boundary・feature 分割方針と矛盾しないか確認してください
+6. 情報が不足している場合は、確認事項だけを提示してください
+7. 情報がそろっている場合のみ、`docs/templates/20_spec_template.md` の見出し構成を維持して `20_spec.md` を作成または更新してください
+8. 不明点を補う必要がある場合は、勝手に決めず `仮定` として明記してください
 
 ## 禁止事項
 
@@ -181,7 +198,7 @@
 ## レビュー補助メモ
 
 作業後の報告に、レビュー補助メモを含めてください。
-記載項目とルールは `AGENTS.md` の「レビュー補助メモ」に従います（このプロンプトには定義を複製しません）。
+記載項目とルールは `docs/rules/core/50_records_and_reporting.md` の「レビュー補助メモ」に従います（このプロンプトには定義を複製しません）。
 
 レビュー補助メモは作業完了報告（チャット）に出力します。`tasks.md` には書きません。
 

@@ -12,6 +12,7 @@ def run_entrypoint(*args: str) -> subprocess.CompletedProcess[str]:
         [sys.executable, str(ENTRYPOINT), *args],
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=False,
     )
 

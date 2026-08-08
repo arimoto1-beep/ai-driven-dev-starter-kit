@@ -1,5 +1,8 @@
 # ドキュメント構成
 
+この文書は、スターターキット全体像を人間が理解するための概要です。
+**AIが守るルールの正本は `docs/rules/` 配下です**（索引: [rules/README.md](rules/README.md)）。この文書はルールの正本ではありません。
+
 このリポジトリでは、コマンド/アプリ単位で docs、src、tests を対応させます。
 
 ```text
@@ -74,7 +77,8 @@ docs/
 | `20_bug_investigation.md` | 仕様・設計・実装・テストを確認し、原因仮説と影響範囲を整理する。修正はしない |
 | `30_bug_fix_plan.md` | 修正対象、テスト方針、確認コマンド、人間承認欄を整理する。承認前に実装しない |
 | `docs/context/` | 会議メモ・未決事項・却下案などの補助資料。確定仕様ではなく、レビュー・バグ調査・任意調査の確認トリガーとして参照する |
-| `docs/context/ai_work_logs/` | AIへの依頼内容、確認したファイル、更新内容、更新しなかった内容と理由、確認結果、残課題を記録する補助ログ。確定仕様ではなく、人間の明示指示がある場合に作成する |
+| `docs/context/ai_work_logs/` | 旧AI作業ログ。**旧方式として凍結しており、新規作成しません。** 既存の記録は当時の経緯を確認するために保持する |
+| `docs/context/work_notes/` | 作業メモ。作業の経緯・判断・手戻り・現在地を、作業テーマ単位のフォルダとREADME.mdで残す現行の記録方式。`prompts/prepare_work_note.md` で構成し、人間確認後に保存する |
 
 `25_review_result.md` は feature 単体の仕様、設計、実装、単体テストを確認するためのレビュー結果です。
 `12_command_review_result.md` は overview、entrypoint、結合試験、全体テスト、feature 単体レビュー結果を確認するためのレビュー結果です。
@@ -83,30 +87,17 @@ docs/
 
 ## テンプレート
 
-ドキュメントを作成する場合は、以下のテンプレートを参照します。
+ドキュメントを作成する場合は、`docs/templates/` 配下のひな形を使います。代表例は次のとおりです。
 
 | 作成するファイル | 参照するテンプレート |
 |---|---|
 | `10_overview.md` | `docs/templates/10_overview_template.md` |
-| `tasks.md` | `docs/templates/tasks_template.md` |
 | `20_spec.md` | `docs/templates/20_spec_template.md` |
 | `21_design.md` | `docs/templates/21_design_template.md` |
-| `22_flow.md` | `docs/templates/22_flow_template.md` |
 | `23_test_plan.md` | `docs/templates/23_test_plan_template.md` |
-| `24_review_checklist.md` | `docs/templates/24_review_checklist_template.md` |
 | `25_review_result.md` | `docs/templates/25_review_result_template.md` |
-| `11_integration_test_plan.md` | `docs/templates/11_integration_test_plan_template.md` |
-| `12_command_review_result.md` | `docs/templates/12_command_review_result_template.md` |
-| `30_common_proposal.md` | `docs/templates/30_common_proposal_template.md` |
-| `common_design/30_common_design_index.md` | `docs/templates/30_common_design_index_template.md` |
-| `common_design/31_file_design.md` | `docs/templates/31_file_design_template.md` |
-| `common_design/32_data_design.md` | `docs/templates/32_data_design_template.md` |
-| `common_design/33_db_design.md` | `docs/templates/33_db_design_template.md` |
-| `10_bug_report.md` | `docs/templates/10_bug_report_template.md` |
-| `20_bug_investigation.md` | `docs/templates/20_bug_investigation_template.md` |
-| `30_bug_fix_plan.md` | `docs/templates/30_bug_fix_plan_template.md` |
-| `docs/context/` 配下のメモ | `docs/templates/context_note_template.md` |
-| `docs/context/ai_work_logs/<date>_<task_id>_<summary>.md` | `docs/templates/ai_work_log_template.md` |
+
+**全成果物とひな形の対応表、および文書種別ごとの見出しの扱い（維持するか省略してよいか）は `docs/rules/project/15_document_templates.md` が正本です。**
 
 ---
 
@@ -114,8 +105,8 @@ docs/
 
 `docs/context/` は、会議メモ・チャット補足・過去判断・未決事項・却下案・注意事項を集める補助資料の置き場です。
 
-確定仕様ではありません。レビュー・バグ調査・任意調査のときに、正式資料とのズレ・矛盾・反映漏れ・未決事項・却下案の混入に気づくための確認トリガーとして参照します。
-詳しくは `docs/context/README.md` を参照してください。
+**位置づけ（正式資料との関係、矛盾時の扱い）の正本は `docs/rules/core/40_official_docs_and_context.md`、AIの更新権限の正本は `docs/rules/project/50_ai_permissions.md` です。**
+置き場としての使い方は `docs/context/README.md` を参照してください。
 
 `docs/context/` の横断探索は、通常レビューやバグ調査の主責務にしません。通常レビュー（`prompts/review_feature.md` / `prompts/review_command.md`）やバグ調査（`prompts/investigate_bug.md` / `prompts/create_bug_fix_plan.md`）は `docs/context/` を軽い確認トリガーとしてのみ扱い、深掘りが必要な場合は `prompts/review_context.md` に委譲します。これは、context 量が増えても通常レビューやバグ調査を完遂できるようにするためです。
 `prompts/review_context.md` は候補出し専用で、正式資料・`docs/context/`・`bugs/` 配下のいずれも変更しません。採用・却下・保留は人間が判断します。
@@ -127,6 +118,8 @@ docs/
 feature 実装（`prompts/implement_feature.md`）に進む前に、`24_review_checklist.md` 末尾の実装着手承認欄を人間が確認してチェックを入れる。
 承認欄に未チェック項目がある場合、AIは実装を開始せず STOP する。AIが勝手にチェックを入れて進んではならない。
 
+承認境界と停止判断の正本 → `docs/rules/core/20_approval_and_review.md`／承認欄の場所 → `docs/rules/project/50_ai_permissions.md`
+
 ---
 
 ## バグ修正フロー
@@ -136,6 +129,8 @@ feature 実装（`prompts/implement_feature.md`）に進む前に、`24_review_c
 
 `bug_id` は `bug_001` のような形式を基本とする。同一 command/app 内で重複しない名前にする。
 チュートリアルでは `bug_001` を使用してよい。
+
+工程の全体像 → `docs/rules/project/20_workflow.md`
 
 ---
 
@@ -154,6 +149,8 @@ feature 固有のロジックは `src/<command_or_app_name>/features/<feature_na
 entrypoint のテストは `tests/<command_or_app_name>/test_entrypoint_<short_name>.py` に置きます。
 結合試験は `tests/<command_or_app_name>/test_integration_<short_name>.py` に置きます。
 feature の単体テストは `tests/<command_or_app_name>/features/test_<feature_name>.py` に置きます。
+
+実装規約の正本 → `docs/rules/project/30_development_rules.md`／テスト規約の正本 → `docs/rules/project/40_testing_rules.md`
 
 ---
 
@@ -199,6 +196,8 @@ feature の詳細ロジック、正常系、異常系、境界値などを確認
 共通化候補がある場合は、設計書、レビュー結果、または作業報告に提案として記録します。
 提案をまとめる場合は、`docs/templates/30_common_proposal_template.md` を使います。
 
+保護対象とAIの更新権限の正本 → `docs/rules/project/50_ai_permissions.md`
+
 ---
 
 ## prompts
@@ -206,6 +205,7 @@ feature の詳細ロジック、正常系、異常系、境界値などを確認
 `prompts/` 直下には、実プロジェクトでも使う汎用プロンプトだけを配置します。チュートリアル専用プロンプトは置きません。
 
 汎用プロンプトは直接書き換えず、チャットで参照するプロンプトのパスと対象情報を渡して使います。
+各プロンプトの冒頭には `## 必須参照ルール` があり、**その作業でAIが読むルール文書の一覧**が列挙されています。
 詳しくは `docs/how_to_use_prompts.md` を参照してください。
 
 `review_feature_source.md` は `implement_feature.md` 直後の中間チェック用プロンプトです。実装ファイルとテストファイルを仕様・設計・テスト計画と照合し、修正候補をチャットで報告します。ファイルは変更しません。`25_review_result.md` も作成しません。正式なレビュー結果は `review_feature.md` で行います。

@@ -1,6 +1,6 @@
 # AI駆動開発スターターキット
 
-このリポジトリは、GitHub Copilot Agent Mode を使って、AI駆動開発の流れを小さく体験するためのスターターキットです。
+このリポジトリは、AIコーディングエージェントを使って、AI駆動開発の流れを小さく体験するためのスターターキットです。
 
 目的は、完成度の高いアプリを作ることではありません。
 人間が理解できる仕様と設計を用意し、それをもとにAIと一緒に小さく開発する流れを体験します。
@@ -18,7 +18,7 @@ AIには小さな機能単位で実装を依頼し、人間が段階的に確認
 
 ## このリポジトリで体験できること
 
-- AIに作業してもらうための `AGENTS.md` の使い方
+- AIに作業してもらうための入口（`AGENTS.md`）と、責務別ルール（`docs/rules/`）の使い方
 - コマンド/アプリ単位で docs、src、tests を対応させる方法
 - 個別機能を `features/<feature_name>/` で管理する方法
 - 仕様、設計、呼び出し定義、テスト計画、レビュー観点を先に整理する流れ
@@ -52,18 +52,26 @@ python -m pip install -r requirements.txt
 ```text
 ai-driven-dev-starter-kit/
 ├─ README.md
-├─ AGENTS.md
+├─ AGENTS.md                            ← AIが最初に読む薄い入口
+├─ CLAUDE.md                            ← Claude Code向け補助入口
 ├─ docs/
 │  ├─ overview.md
 │  ├─ how_to_use_prompts.md
 │  ├─ prompt_design_notes.md
+│  ├─ rules/                            ← ルール内容の正本（詳細は rules/README.md）
+│  │  ├─ README.md                      ← ルール体系の索引
+│  │  ├─ core/                          ← プロジェクトに依存しない安全境界・上位原則
+│  │  └─ project/                       ← このキット固有の設定（利用者が編集するのはここ）
 │  ├─ concept/
 │  │  └─ ai_driven_development.md
-│  ├─ context/                          ← 補助コンテキスト（確定仕様ではない）
+│  ├─ context/                          ← 補助コンテキスト
 │  │  ├─ README.md
-│  │  ├─ ai_work_logs/                  ← AI作業ログ（確定仕様ではない）
+│  │  ├─ ai_work_logs/                  ← 旧AI作業ログ（凍結・新規作成しない）
 │  │  │  ├─ README.md
 │  │  │  └─ <date>_<task_id>_<summary>.md
+│  │  ├─ work_notes/                    ← 作業メモ（現行の記録方式）
+│  │  │  ├─ README.md
+│  │  │  └─ <YYYYMMDD_short_name>/
 │  │  └─ rejected_verbose_option.md
 │  ├─ common/
 │  │  └─ README.md
@@ -87,7 +95,8 @@ ai-driven-dev-starter-kit/
 │  │  ├─ 32_data_design_template.md
 │  │  ├─ 33_db_design_template.md
 │  │  ├─ context_note_template.md
-│  │  └─ ai_work_log_template.md
+│  │  ├─ ai_work_log_template.md
+│  │  └─ work_note_readme_template.md
 │  ├─ tutorials/
 │  │  ├─ 010_simple_calculator.md
 │  │  ├─ 020_create_new_sample_from_scratch.md
@@ -157,6 +166,7 @@ ai-driven-dev-starter-kit/
 │  ├─ investigate_bug.md
 │  ├─ create_bug_fix_plan.md
 │  ├─ implement_bug_fix.md
+│  ├─ prepare_work_note.md              ← 作業メモ(経緯・判断・手戻りの記録)を構成する
 │  └─ review_prompt_integrity.md       ← スターターキット自体のプロンプト完全性レビュー用
 ├─ src/
 │  ├─ common/
@@ -171,18 +181,39 @@ ai-driven-dev-starter-kit/
 │     ├─ entrypoint.py
 │     └─ features/
 │        └─ text_counter.py
-└─ tests/
-   ├─ cli_hello_greeting/
-   │  ├─ test_entrypoint_greeting.py
-   │  ├─ test_integration_greeting.py
-   │  └─ features/
-   │     └─ test_greeting.py
-   └─ cli_text_counter/
-      ├─ test_entrypoint_text_counter.py
-      ├─ test_integration_text_counter.py
-      └─ features/
-         └─ test_text_counter.py
+├─ tests/
+│  ├─ cli_hello_greeting/
+│  │  ├─ test_entrypoint_greeting.py
+│  │  ├─ test_integration_greeting.py
+│  │  └─ features/
+│  │     └─ test_greeting.py
+│  └─ cli_text_counter/
+│     ├─ test_entrypoint_text_counter.py
+│     ├─ test_integration_text_counter.py
+│     └─ features/
+│        └─ test_text_counter.py
+├─ tools/                               ← 品質確認ツール(quality_report.py 等)
+├─ quality/                             ← 品質確認ツールの出力先
+├─ requirements.txt
+└─ LICENSE
 ```
+
+---
+
+## ルールはどこにあるか
+
+このキットのルールは、責務ごとに分けて管理しています。**ルール内容の正本は `docs/rules/` 配下です。**
+
+| 対象 | 役割 |
+|---|---|
+| `AGENTS.md` | AIが最初に読む**薄い入口**。常に守る原則と、どのルールを読むかの導線だけを持ちます |
+| `docs/rules/core/` | プロジェクトに依存しない安全境界と上位原則（工程・承認・変更範囲・正式資料・記録） |
+| `docs/rules/project/` | このキット固有の設定（文書構造・工程・実装規約・テスト規約・AIの権限）。**利用者が編集するのはここだけです** |
+| `prompts/*.md` | task 固有の作業手順。各プロンプトの `## 必須参照ルール` に、その作業で読むルールが列挙されています |
+
+以下のセクションは、この構造を人間が理解するための概要です。**詳細・最新の定義は各正本を参照してください。**
+
+ルール体系の索引 → **[docs/rules/README.md](docs/rules/README.md)**
 
 ---
 
@@ -260,6 +291,8 @@ tests/<command_or_app_name>/test_integration_<short_name>.py
 `<short_name>` は、単一 feature の command/app では feature 名を使います。
 複数 feature を束ねる command/app では、command/app を短く表す名前を使います。
 
+実装規約の詳細（言語、依存、命名、entrypoint と features の責務）→ `docs/rules/project/30_development_rules.md`
+
 ---
 
 ## 結合試験の位置づけ
@@ -272,6 +305,8 @@ feature 単体の詳細ロジックは、各 feature の単体試験で確認し
 結合試験計画は、必要に応じて `docs/<command_or_app_name>/11_integration_test_plan.md` に作成します。
 常に必須ではなく、entrypoint から feature を束ねて確認する必要がある場合に扱います。
 
+試験の単位、検証コマンド、テストファイルの配置 → `docs/rules/project/40_testing_rules.md`
+
 ---
 
 ## 実装前承認ゲート
@@ -279,6 +314,9 @@ feature 単体の詳細ロジックは、各 feature の単体試験で確認し
 feature 実装に進む前に、`24_review_checklist.md` の末尾にある実装着手承認欄を人間が確認してチェックを入れてください。
 承認欄に未チェック項目がある場合、`prompts/implement_feature.md` は STOP します。
 これは、設計完了後にAIが勝手に実装へ進まないためのゲートです。
+
+承認境界と停止判断（次工程移行判定を含む）の詳細 → `docs/rules/core/20_approval_and_review.md`
+承認欄の場所と承認者 → `docs/rules/project/50_ai_permissions.md`
 
 ---
 
@@ -288,7 +326,7 @@ feature 実装に進む前に、`24_review_checklist.md` の末尾にある実�
 
 分類が未確定なまま作業を始めず、まず `prompts/analyze_code_change_impact.md` で影響範囲を整理します。このプロンプトはファイルを変更せず、変更の分類・影響する資産・次に進むべきフローをチャットで報告します。
 
-分析では、影響するファイルを列挙するだけでなく、変更内容を定義すべき最上流かつ役割の合う正式資料を「正本」として特定します。人間が正本と更新順を確認した後、上流から下流へ順番に反映します。上流資料を形式的にすべて変更するわけではなく、変更不要な上流資料は理由を示して更新しません。現在の構成に適切な正本がない場合は、AIが新しい資料を作らず人間判断に戻します。詳しい判断基準は `prompts/analyze_code_change_impact.md` と `AGENTS.md` を参照してください。
+分析では、影響するファイルを列挙するだけでなく、変更内容を定義すべき最上流かつ役割の合う正式資料を「正本」として特定します。人間が正本と更新順を確認した後、上流から下流へ順番に反映します。上流資料を形式的にすべて変更するわけではなく、変更不要な上流資料は理由を示して更新しません。現在の構成に適切な正本がない場合は、AIが新しい資料を作らず人間判断に戻します。詳しい判断基準は `prompts/analyze_code_change_impact.md` と `docs/rules/core/10_workflow.md` を参照してください。
 
 分析結果を人間が確認したうえで、バグ候補ならバグ修正フローへ、仕様変更なら仕様変更の流れへ進みます。共通化候補の場合も、AIが `src/common/` を勝手に変更することはありません。
 
@@ -298,7 +336,7 @@ feature 実装に進む前に、`24_review_checklist.md` の末尾にある実�
 
 ## バグ修正フロー
 
-バグをいきなり修正せず、以下の順番で進めてください。
+このキットでは、バグを見つけてもすぐ修正せず、おおむね次のように段階を分けます。
 
 1. **バグ報告書を作成する**（`prompts/create_bug_report.md`）
    - 現象、期待動作、再現手順を整理する。原因は断定しない。修正しない。
@@ -312,7 +350,9 @@ feature 実装に進む前に、`24_review_checklist.md` の末尾にある実�
    - 承認済み計画の範囲だけを修正する。ついで修正はしない。
 
 バグ管理ドキュメントは `docs/<command_or_app_name>/bugs/<bug_id>/` に配置します。
-仕様・設計・テスト計画への反映が必要な場合は、修正実装とは別作業として明記し、人間が判断してから進めます。
+仕様・設計・テスト計画への反映が必要な場合は、修正実装とは別作業として扱います。
+
+上記は流れをつかむための説明です。**正確な工程、承認条件、各 task の責務は `docs/rules/project/20_workflow.md` と対応する task プロンプトを参照してください。**
 
 ---
 
@@ -330,9 +370,14 @@ entrypoint と結合試験まで含めた最終確認は `review_command.md` で
 
 既存のレビュー結果がある場合でも、古い判定をそのまま採用せず、現在のファイル群を読み直して再レビューします。
 
-`docs/context/` の横断探索は、通常レビューから分離して `prompts/review_context.md` が専任で扱います。通常レビュー（`review_feature.md` / `review_command.md`）やバグ調査（`investigate_bug.md` / `create_bug_fix_plan.md`）は、`docs/context/` を軽い確認トリガーとしてのみ参照し、横断探索を主責務にしません。context 量が増えても通常レビューやバグ調査を完遂できるようにするためです。深掘りが必要になったら `review_context.md` に委譲します。
+`docs/context/`（補助コンテキスト）の横断探索は、通常レビューから分離して `prompts/review_context.md` が専任で扱います。通常レビューやバグ調査で context を読み込みすぎると、本来の確認が終わらなくなるためです。
 
-`review_context.md` は候補出し専用です。正式資料への反映候補・矛盾候補・未決事項・却下案の混入候補・人間確認事項をチャットで報告します。正式資料・`docs/context/`・`bugs/` 配下のいずれも変更しません。採用・却下・保留は人間が判断し、採用されたものだけを別作業として正式資料へ反映します。
+`review_context.md` は候補を出すだけで、ファイルを変更しません。採用・却下・保留は人間が判断します。
+
+各 task が context をどこまで読み、何を変更できるかは、対応する `prompts/*.md` を参照してください。
+
+レビュー結果の評価値と記録先 → `docs/rules/project/25_review_policy.md`
+レビューと修正の分離、次工程移行判定 → `docs/rules/core/20_approval_and_review.md`
 
 ---
 
@@ -351,6 +396,8 @@ feature 個別の `21_design.md` では、必要に応じて共通設計書を�
 | `common_design/32_data_design.md` | `32_data_design_template.md` | `create_data_design.md` | 共通データ項目・ID体系・ステータス |
 | `common_design/33_db_design.md` | `33_db_design_template.md` | `create_db_design.md` | DB種別・テーブル・カラム・制約・トランザクション方針 |
 
+**全成果物とひな形の対応関係の正本は `docs/rules/project/15_document_templates.md` です。**
+
 `common_design/` は必要になった場合に追加する拡張です。すべてのコマンド/アプリで必須ではありません。
 
 ---
@@ -362,6 +409,8 @@ feature 個別の `21_design.md` では、必要に応じて共通設計書を�
 ただし、AIは人間の明示指示なしに `src/common/` を作成・更新しません。
 共通化候補がある場合は、設計書、レビュー結果、作業報告に提案として記録します。
 提案をまとめる場合は、`docs/templates/30_common_proposal_template.md` を使います。
+
+保護対象とAIの更新権限の詳細 → `docs/rules/project/50_ai_permissions.md`
 
 ---
 
@@ -459,6 +508,8 @@ tasks.md の運用を含む完成形を確認できます。
 python -m pytest
 ```
 
+試験の単位や配置を含むテスト規約 → `docs/rules/project/40_testing_rules.md`
+
 ---
 
 ## 注意事項
@@ -473,6 +524,8 @@ python -m pytest
 - `src/common/` に勝手に共通処理を追加しないでください
 - 結合試験中にテストしにくい点があっても、勝手に実装コードを変更しないでください
 - チュートリアル専用プロンプト置き場は作成しないでください
+
+ここに挙げたのは代表例です。**AIが守るルールの正本は `docs/rules/` 配下です**（索引: [docs/rules/README.md](docs/rules/README.md)）。
 
 ---
 

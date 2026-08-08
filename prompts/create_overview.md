@@ -9,6 +9,26 @@
 利用者は、チャットで「参照するプロンプトのパス」と「対象情報」を渡して使います。
 このプロンプト本文を直接書き換える運用は想定しません。
 
+## 必須参照ルール
+
+この節は、この task で必ず読むルール文書**一覧**の正本です。各ルールの**内容**は、ここに列挙したルール文書を正本とします。このプロンプトが core や project を再定義するものではありません。
+
+`## 参照するファイル` は今回の作業対象資料であり、このルール文書一覧とは役割が異なります。
+
+### 作業開始時に読む
+
+- `docs/rules/core/10_workflow.md`
+- `docs/rules/core/40_official_docs_and_context.md`
+- `docs/rules/project/10_document_structure.md`
+- `docs/rules/project/15_document_templates.md`
+- `docs/rules/project/30_development_rules.md`（entrypoint と features の責務、common の扱い）
+
+### 作業完了時に読む
+
+- `docs/rules/core/50_records_and_reporting.md`
+
+---
+
 ## 利用者が指定する項目
 
 利用者は、チャットで以下を指定します。
@@ -22,7 +42,6 @@
 
 ## 参照するファイル
 
-- `AGENTS.md`
 - `docs/templates/10_overview_template.md`
 
 必要に応じて、既存の以下も参照してください。
@@ -59,15 +78,14 @@
 
 ## 作業範囲
 
-1. `AGENTS.md` を確認してください
-2. `docs/templates/10_overview_template.md` を確認してください
-3. 利用者が指定した項目を確認してください
-4. 情報が不足している場合は、いきなり `10_overview.md` を作成せず、確認事項だけを提示してください
-5. 情報がそろっている場合のみ、`docs/templates/10_overview_template.md` の見出し構成を維持して `10_overview.md` を作成または更新してください
-6. `10_overview.md` には、コマンド/アプリ全体の目的、Boundary、入口、feature 分割方針を記載してください
-7. 個別 feature の分割案を提示してください
-8. ただし、このプロンプトでは個別 feature の `20_spec.md` は作成しないでください
-9. 不明点を補う必要がある場合は、勝手に決めず `仮定` として明記してください
+1. `docs/templates/10_overview_template.md` を確認してください
+2. 利用者が指定した項目を確認してください
+3. 情報が不足している場合は、いきなり `10_overview.md` を作成せず、確認事項だけを提示してください
+4. 情報がそろっている場合のみ、`docs/templates/10_overview_template.md` の見出し構成を維持して `10_overview.md` を作成または更新してください
+5. `10_overview.md` には、コマンド/アプリ全体の目的、Boundary、入口、feature 分割方針を記載してください
+6. 個別 feature の分割案を提示してください
+7. ただし、このプロンプトでは個別 feature の `20_spec.md` は作成しないでください
+8. 不明点を補う必要がある場合は、勝手に決めず `仮定` として明記してください
 
 ## 情報不足時のルール
 
@@ -154,7 +172,7 @@ feature 分割案は、まだ確定ではありません。
 ## レビュー補助メモ
 
 作業後の報告に、レビュー補助メモを含めてください。
-記載項目とルールは `AGENTS.md` の「レビュー補助メモ」に従います（このプロンプトには定義を複製しません）。
+記載項目とルールは `docs/rules/core/50_records_and_reporting.md` の「レビュー補助メモ」に従います（このプロンプトには定義を複製しません）。
 
 レビュー補助メモは作業完了報告（チャット）に出力します。`tasks.md` には書きません。
 

@@ -51,8 +51,10 @@ python src/cli_simple_calculator/entrypoint.py --a 2 --b 3
 - 複雑な入力チェック
 - GUI対応
 - 外部API連携
-- （注）この `20_spec.md` は**feature 単体**の仕様を定義するものであり、`entrypoint` の実装や結合試験は含みません。`entrypoint` の実装は `implement_entrypoint.md` の範囲で扱います。アプリ／コマンド単位の結合試験は必要に応じて [docs/cli_simple_calculator/11_integration_test_plan.md](../11_integration_test_plan.md) にて定義・管理してください。
+- 結合試験
 - CI/CD
+
+（注）この `20_spec.md` は**feature 単体**の仕様を定義するものであり、`entrypoint` の実装や command/app 単位の結合試験は含みません。`entrypoint` の実装は `prompts/implement_entrypoint.md` の範囲で扱います。command/app 単位の結合試験が必要になった場合は、`prompts/create_integration_test_plan.md` を使って `docs/cli_simple_calculator/11_integration_test_plan.md` を新しく作成し、そこで定義・管理します。
 
 ## レビュー観点
 

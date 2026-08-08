@@ -9,6 +9,25 @@ feature 固有のロジックは `features/` 配下に置き、`entrypoint.py` �
 
 このプロンプトファイルは直接書き換えず、チャットでこのファイルのパスと「利用者が指定する項目」を指定して使います。
 
+## 必須参照ルール
+
+この節は、この task で必ず読むルール文書**一覧**の正本です。各ルールの**内容**は、ここに列挙したルール文書を正本とします。このプロンプトが core や project を再定義するものではありません。
+
+`## 参照するファイル` は今回の作業対象資料であり、このルール文書一覧とは役割が異なります。
+
+### 作業開始時に読む
+
+- `docs/rules/core/10_workflow.md`（入口処理と業務ロジックの責務を分ける）
+- `docs/rules/core/30_change_safety.md`（作業対象外を変更しない）
+- `docs/rules/project/30_development_rules.md`
+- `docs/rules/project/40_testing_rules.md`
+
+### 作業完了時に読む
+
+- `docs/rules/core/50_records_and_reporting.md`
+
+---
+
 ## 利用者が指定する項目
 
 利用者は、チャットで以下を指定します。
@@ -23,7 +42,6 @@ feature 固有のロジックは `features/` 配下に置き、`entrypoint.py` �
 
 ## 参照するファイル
 
-- `AGENTS.md`
 - `docs/<command_or_app_name>/10_overview.md`
 
 必要に応じて、以下も参照してください。
@@ -47,6 +65,8 @@ feature 固有のロジックは `features/` 配下に置き、`entrypoint.py` �
 - `tests/<command_or_app_name>/test_entrypoint_<short_name>.py`
 
 ## 変更してはいけないファイル
+
+この節は、**今回の task で変更を許可されていないファイル**です。project が定める**保護対象**（`docs/rules/project/50_ai_permissions.md`）とは別のレイヤであり、両方を満たす必要があります。
 
 明示指示がない限り、以下は変更しないでください。
 
@@ -85,16 +105,15 @@ feature 固有のロジックは `features/` 配下に置き、`entrypoint.py` �
 
 ## 作業範囲
 
-1. `AGENTS.md` を確認してください
-2. `docs/<command_or_app_name>/10_overview.md` を確認してください
-3. 必要に応じて対象 feature の仕様、設計、呼び出し定義、テスト計画を確認してください
-4. `entrypoint.py` が担当すべき責務を整理してください
-5. feature 固有のロジックが `entrypoint.py` に入らないようにしてください
-6. `src/<command_or_app_name>/entrypoint.py` を作成または更新してください
-7. `tests/<command_or_app_name>/test_entrypoint_<short_name>.py` を作成または更新してください
-8. 実装後、可能であれば `python -m pytest` を実行してください
-9. `python -m pytest` が環境理由で失敗する場合は、利用可能な Python 実体で代替実行してください
-10. 実行したコマンドと結果を正確に報告してください
+1. `docs/<command_or_app_name>/10_overview.md` を確認してください
+2. 必要に応じて対象 feature の仕様、設計、呼び出し定義、テスト計画を確認してください
+3. `entrypoint.py` が担当すべき責務を整理してください
+4. feature 固有のロジックが `entrypoint.py` に入らないようにしてください
+5. `src/<command_or_app_name>/entrypoint.py` を作成または更新してください
+6. `tests/<command_or_app_name>/test_entrypoint_<short_name>.py` を作成または更新してください
+7. 実装後、可能であれば `python -m pytest` を実行してください
+8. `python -m pytest` が環境理由で失敗する場合は、利用可能な Python 実体で代替実行してください
+9. 実行したコマンドと結果を正確に報告してください
 
 ## entrypoint の実装方針
 
@@ -244,7 +263,7 @@ entrypoint 実装中に、feature 実装や設計が entrypoint から呼び出�
 ## レビュー補助メモ
 
 作業後の報告に、レビュー補助メモを含めてください。
-記載項目とルールは `AGENTS.md` の「レビュー補助メモ」に従います（このプロンプトには定義を複製しません）。
+記載項目とルールは `docs/rules/core/50_records_and_reporting.md` の「レビュー補助メモ」に従います（このプロンプトには定義を複製しません）。
 
 レビュー補助メモは作業完了報告（チャット）に出力します。`tasks.md` には書きません。
 
