@@ -150,7 +150,8 @@ prompts/implement_feature.md を参照してください。
 | `prompts/review_feature.md` | feature 単体レビューを行う | `<対象機能フォルダ>/25_review_result.md` |
 | `prompts/review_command.md` | command/app 全体レビューを行う | `docs/<command_or_app_name>/12_command_review_result.md` |
 | `prompts/review_context.md` | `docs/context/` を横断探索し、正式資料への反映候補・矛盾候補・未決事項・却下案の混入候補・人間確認事項を候補として整理する（候補のみ。正式資料・docs/context/ は変更しない） | チャットで報告（ファイル出力なし） |
-| `prompts/analyze_code_change_impact.md` | コード起点の変更案を、バグ・仕様変更・内部設計変更・リファクタリング・類似機能間の整合性改善・標準化・共通化候補などに整理し、影響範囲、変更内容の正本となる最上流の正式資料、上流から下流への更新順、次の作業を報告する（ファイルは変更しない） | チャットで報告（ファイル出力なし） |
+| `prompts/analyze_code_change_impact.md` | コードに関する**変更**について、正式資料で意味を定義・維持する必要があるかを整理する。**変更前でも変更後でも使える**（Git差分も入力にできる）。変更点ごとに**変更ルート**（A: 反映不要／B: 正本から下流へ／C: 逆反映／判断不能）と根拠、**実施状態**（未着手／一部実施／実施済み、コード先行の有無）、影響範囲、次の作業を報告する（ファイルは変更しない） | チャットで報告（ファイル出力なし） |
+| `prompts/review_design_code_consistency.md` | 指定した scope（feature / command/app / 共通処理など）について、**現在の正式資料と現在のコードに意味上の矛盾がないか**を確認する。「未記載だが問題ではない実装詳細」と「意味上の矛盾」を分けて報告し、正式資料への逆反映候補も別枠で示す（ファイルは変更しない） | チャットで報告（ファイル出力なし） |
 | `prompts/create_bug_report.md` | バグ報告書を作成する（原因調査・修正はしない） | `docs/<command_or_app_name>/bugs/<bug_id>/10_bug_report.md` |
 | `prompts/investigate_bug.md` | バグ原因を調査し調査書を作成する（修正はしない） | `docs/<command_or_app_name>/bugs/<bug_id>/20_bug_investigation.md` |
 | `prompts/create_bug_fix_plan.md` | バグ修正計画書を作成する（承認待ち。修正はしない） | `docs/<command_or_app_name>/bugs/<bug_id>/30_bug_fix_plan.md` |
@@ -173,6 +174,19 @@ entrypoint と結合試験まで含めた最終確認は、`review_command.md` �
 `prompts/review_context.md` は `docs/context/` の横断探索を専任で行うプロンプトです。通常レビュー（`review_feature.md` / `review_command.md`）やバグ調査（`investigate_bug.md` / `create_bug_fix_plan.md`）は、`docs/context/` を軽い確認トリガーとしてのみ扱い、横断探索を主責務にしません。context 量が増えても通常レビューやバグ調査を完遂できるようにするためです。`docs/context/` の深掘りが必要になったら、`review_context.md` に委譲します。
 
 `review_context.md` は候補出し専用です。正式資料・`docs/context/`・`bugs/` 配下のいずれも変更せず、結果はチャットで報告します。採用・却下・保留は人間が判断し、採用されたものだけを別作業として正式資料へ反映します。
+
+`prompts/review_design_code_consistency.md` は、標準工程に固定されない随時利用のレビューです。指定した scope について、**現在の正式資料と現在のコードに意味上の矛盾がないか**だけを確認します。`review_feature.md` や `review_command.md` の正式なレビュー結果を代替しません。scope の指定は必須で、リポジトリ全体を無制限に読むことはしません。
+
+### 未記載と矛盾を分ける
+
+`review_feature_source.md` / `review_feature.md` / `review_command.md` / `review_design_code_consistency.md` は、いずれも次を区別します。
+
+- **未記載**（正式資料が実装詳細を規定していないが、意味には反していない）… それだけでは指摘しません
+- **矛盾**（正式資料が定義している意味とコードが食い違っている）… 指摘します
+
+生成AIが書いたコードには、同じ仕様・設計でも実装上の揺らぎ（関数の切り方、変数名、局所的な書き方など）があります。**揺らぎそのものは指摘対象ではありません。**
+
+ただし、仕様にない便利機能、外部から見える動作の変更、責務としての意味の変更、維持すべき呼び出し関係の変更は、「未記載だから問題なし」とはしません。正式資料が意味を定義している領域だからです。
 
 ---
 
@@ -282,15 +296,49 @@ prompts/analyze_code_change_impact.md を参照してください。
 
 対象 command/app: cli_text_counter
 対象 feature: text_counter
-変更したい内容: 入力チェックの書き方を、他の feature と同じ方式にそろえたい
-変更したい理由または違和感: 正常に動いているが、この feature だけ例外の投げ方が違う気がする
+実施状態: 未着手
+変更内容: 入力チェックの書き方を、他の feature と同じ方式にそろえたい
+変更の理由または違和感: 正常に動いているが、この feature だけ例外の投げ方が違う気がする
 関連する実装ファイル: src/cli_text_counter/features/text_counter.py
 類似機能または比較対象: src/cli_hello_greeting/features/greeting.py
-外部から見える動作を変えたいか: 変えたくない
+外部から見える動作を変えるか: 変えない
 補足条件: 分析だけ行い、ファイルは変更しないでください。
 ```
 
-分析結果で正本と更新順を確認してから、個別の文書更新や実装を別作業として依頼します。
+すでにコードを変更した後で使うこともできます。
+
+```text
+prompts/analyze_code_change_impact.md を参照してください。
+
+対象 command/app: cli_text_counter
+対象 feature: text_counter
+実施状態: 実施済み
+変更実施者: 人間
+変更内容: 入力チェックの書き方を整理し、冗長な分岐をまとめた
+変更の理由または違和感: 読みにくかったため
+変更差分の指定: git diff
+コード先行: なし
+すでに実施した検証: python -m pytest（全件成功）
+外部から見える動作を変えるか: 変えていないつもり
+補足条件: 分析だけ行い、ファイルは変更しないでください。正式資料へ反映すべき内容が含まれていないか確認してください。
+```
+
+分析結果で**変更ルート**（A〜C、または判断不能）と根拠、**実施状態**を確認してから、必要な文書更新や実装を別作業として依頼します。**ルートA（正式資料への反映不要）と報告された場合、正式資料の更新作業は行いません。**
+
+現在の正式資料とコードの整合そのものを確認したい場合は、次を使います。
+
+```text
+prompts/review_design_code_consistency.md を参照してください。
+
+対象 scope の種別: feature
+対象 scope:
+- 対象機能フォルダ: docs/cli_text_counter/features/text_counter/
+- 実装ファイル: src/cli_text_counter/features/text_counter.py
+- テストファイル: tests/cli_text_counter/features/test_text_counter.py
+重点的に確認したい観点: なし
+除外したい範囲: なし
+補足条件: 確認だけ行い、ファイルは変更しないでください。
+```
 
 ```text
 prompts/review_command.md を参照してください。

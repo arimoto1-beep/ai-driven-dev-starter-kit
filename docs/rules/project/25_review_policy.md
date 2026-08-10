@@ -66,7 +66,14 @@
 | feature 単体レビュー | `<対象機能フォルダ>/25_review_result.md` | `prompts/review_feature.md` | `docs/templates/25_review_result_template.md` |
 | command/app 全体レビュー | `docs/<command_or_app_name>/12_command_review_result.md` | `prompts/review_command.md` | `docs/templates/12_command_review_result_template.md` |
 
-ソースレビュー（`prompts/review_feature_source.md`）と補助コンテキストの横断確認（`prompts/review_context.md`）は、チャット報告のみでファイルを作りません。したがってこの4値は使いません。
+次のプロンプトは、チャット報告のみでファイルを作りません。したがってこの4値は使いません。
+
+- ソースレビュー（`prompts/review_feature_source.md`）
+- 補助コンテキストの横断確認（`prompts/review_context.md`）
+- 正式資料とコードの意味上の整合確認（`prompts/review_design_code_consistency.md`）
+- 変更の意味と変更ルート・実施状態の整理（`prompts/analyze_code_change_impact.md`）
+
+このうち `prompts/review_design_code_consistency.md` と `prompts/analyze_code_change_impact.md` は、総合判定として次工程移行判定（`GO` / `条件付きGO` / `STOP`）を出力します。判定値の定義は `docs/rules/core/20_approval_and_review.md` を正本とします。他の2本の出力区分は、それぞれのプロンプトを参照してください。
 
 ### 両方の判定を記録する
 
