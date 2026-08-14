@@ -1,68 +1,33 @@
 # docs/context（補助コンテキスト）
 
-このディレクトリは、会議メモ、チャット補足、過去の判断、未決事項、却下案、注意事項などを横断的に集める場所です。
+`docs/context/` は、会議メモ、チャット補足、過去の判断、未決事項、却下案、注意事項などを横断的に集める場所です。現在の正式資料だけでは分からない背景や、反映漏れの候補を探す手掛かりとして利用できます。
 
-レビュー・バグ調査・任意調査のときに、AIが「正式資料とのズレや矛盾、反映漏れ、未決事項・却下案の混入」に気づくための**確認トリガー**として参照します。
+ここには、決まったこと、まだ決まっていないこと、採用しなかったことが混在します。正式資料との関係や扱い方は、下記のルール正本を参照してください。
 
----
+## 内容
 
-## 何を置くディレクトリか
+| 場所 | 内容 |
+|---|---|
+| [`rejected_verbose_option.md`](rejected_verbose_option.md) | `--verbose` オプションを追加しないとした経緯 |
+| [`ai_work_logs/`](ai_work_logs/README.md) | 旧方式のAI作業ログ |
+| [`work_notes/`](work_notes/README.md) | 作業の経緯、判断、手戻り、現在地を残す作業メモ |
 
-次のようなものを集めます。
+## どこから読むか
 
-- 会議メモ
-- チャットでの補足
-- 過去の判断とその背景
-- まだ決まっていない未決事項
-- 一度検討して見送った却下案
-- 実装・運用上の注意事項
-- 旧AI作業ログ（`ai_work_logs/` 配下。**旧方式として凍結**。詳細は `ai_work_logs/README.md`）
-- 作業メモ（`work_notes/` 配下。作業の経緯・判断・手戻り・現在地を残す記録。詳細は `work_notes/README.md`）
+- 特定の補助メモを確認する場合は、上の一覧から対象ファイルへ進みます。
+- 旧AI作業ログが残っている理由と現在の位置づけは、[`ai_work_logs/README.md`](ai_work_logs/README.md) を参照してください。
+- 作業メモの構成と入口は、[`work_notes/README.md`](work_notes/README.md) を参照してください。
+- 関連する補助コンテキストを横断して探すtaskは、[`prompts/review_context.md`](../../prompts/review_context.md) を参照してください。
 
-これらは「決まったこと」「決まっていないこと」「やらないと決めたこと」が混在します。
+## メモを追加するときの入口
 
-### どういう場面で役に立つか
+補助コンテキスト用のひな形は [`docs/templates/context_note_template.md`](../templates/context_note_template.md) です。メモの種別や確定状況を記載する欄があります。
 
-レビューやバグ調査のときに、「その判断は以前に見送ったのではないか」「この会議での決定が仕様書へ反映されていないのではないか」といったズレに気づくきっかけになります。
+ファイル名は、一覧から内容を識別できる名前を目安にします。例として、`2026-06-04_kickoff_meeting.md`、`undecided_output_format.md` のような名前があります。
 
----
+## 関連するルール
 
-## 位置づけとルールの正本
-
-`docs/context/` の位置づけ（正式資料との関係、矛盾したときの扱い、過去の記録の扱い）は、次を正本とします。**この README では再定義しません。**
-
-- **`docs/rules/core/40_official_docs_and_context.md`** — 正式資料と補助コンテキストの区別、成果物の3分類、矛盾時の扱い
-- **`docs/rules/project/50_ai_permissions.md`** — AIがこのディレクトリをどこまで更新してよいか
-
-要点だけ挙げると、`docs/context/` は確定仕様ではなく、正式資料とのズレや反映漏れに気づくための**確認トリガー**です。AIはここの内容をそのまま仕様として採用せず、矛盾を見つけても勝手に解決しません。
-
----
-
-## 使い方
-
-レビューやバグ調査のときに、AIはここを軽く確認します。深く掘り下げたい場合は、**横断探索の専用 task（`prompts/review_context.md`）**が用意されています。
-
-人間から「この機能に関係しそうな過去判断や未決事項を探して」と依頼することもできます。
-
-**`work_notes/` 配下は、この横断探索の対象には含めません。** 作業メモは通常作業で常に全件読ませる資料ではなく、人間が参照を指示した場合や、現在の作業の引き継ぎ元・経緯確認として必要な場合に参照します。詳細は `prompts/review_context.md` と `docs/rules/project/60_work_notes.md` を参照してください。
-
-**どの task がここをどこまで読むか、何を変更できるかは、各 task プロンプトを正本とします。** この README では task ごとの挙動を定義しません。
-
----
-
-## メモの書き方
-
-個々のメモを追加する場合は、`docs/templates/context_note_template.md` を参照してください。
-種別（会議メモ／未決事項／却下案など）と確定状況（未決／保留／却下／参考）を明示すると、確認トリガーとしての判定が安定します。
-
-ファイル名は内容が分かる名前にしてください（例: `2026-06-04_kickoff_meeting.md`、`undecided_output_format.md`）。
-
----
-
-## 現在の状態
-
-| ファイル | 種別 | 確定状況 | 概要 |
-|---|---|---|---|
-| `rejected_verbose_option.md` | 却下案 | 却下 | `--verbose` オプションを追加しないと決めた経緯のメモ |
-| `ai_work_logs/` | 旧AI作業ログ置き場 | **凍結（新規作成しない）** | 旧方式の記録を保存するためのサブディレクトリ（詳細は `ai_work_logs/README.md`） |
-| `work_notes/` | 作業メモ置き場 | 現行方式 | 作業単位のフォルダとREADME.mdで経緯を残すサブディレクトリ。運用の正本は `docs/rules/project/60_work_notes.md`（詳細は `work_notes/README.md`） |
+- 正式資料と補助コンテキストの関係: [`rules/core/40_official_docs_and_context.md`](../rules/core/40_official_docs_and_context.md)
+- 補助記録の配置: [`rules/project/10_document_structure.md`](../rules/project/10_document_structure.md)
+- AIの更新権限: [`rules/project/50_ai_permissions.md`](../rules/project/50_ai_permissions.md)
+- 作業メモの参照と運用: [`rules/project/60_work_notes.md`](../rules/project/60_work_notes.md)

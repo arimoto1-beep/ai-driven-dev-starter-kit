@@ -1,167 +1,65 @@
 # ルール体系の地図
 
-このディレクトリは、AI駆動開発スターターキットのルールを責務別に整理した置き場です。
+`docs/rules/` は、AI駆動開発スターターキットのルールを責務別に整理した場所です。このREADMEは、ルール体系の構造と、目的に合う正本を探すための索引です。
 
-このファイルは人間向けの地図です。ルールそのものは各ファイルに書かれています。
+## 読み始める場所
 
----
+AIの入口はリポジトリ直下の [`AGENTS.md`](../../AGENTS.md) です。プロジェクト設定の入口は [`project/00_project_policy.md`](project/00_project_policy.md) です。
 
-## `docs/rules/` は現在有効なルール体系です
-
-- **`docs/rules/` 配下が、現在有効なルールの正本です。**
-- **`AGENTS.md` は、このルール体系と task プロンプトへ案内する薄い入口です。** 詳細ルールは持ちません。
-- 各 task プロンプト（`prompts/*.md`）には `## 必須参照ルール` があり、**そのtaskで読むルール文書一覧の正本**です。
-- **`AGENTS.md` にも本ファイルにも、task 別の参照マトリクスは置きません。**
-
-### 読み込みの導線
+task promptが指定されている場合は、そのpromptにある `必須参照ルール` と `参照するファイル` から、今回必要な資料へ進みます。promptを探す場合は [`prompts/README.md`](../../prompts/README.md) を参照してください。
 
 ```text
-AGENTS.md                        常に守る原則と読込導線
+AGENTS.md
   ↓
-project/00_project_policy.md     常に読む（プロジェクト設定の索引）
+project/00_project_policy.md
   ↓
-指定された prompts/*.md          task 固有の手順
+指定された prompts/*.md
   ↓
-その task の ## 必須参照ルール    このtaskで読むルール文書の一覧
-  ↓
-その task の ## 参照するファイル  今回の作業対象資料
+promptが示す必須参照ルールと作業対象資料
 ```
 
-task プロンプトが指定されていない場合は、`AGENTS.md` の粗い4分類（実装・変更／レビュー・承認／補助コンテキスト／記録・報告）を入口として使います。どの分類か判断できない場合、AIは勝手に決めず人間へ確認します。
+task promptが指定されていない作業の入口は、[`AGENTS.md`](../../AGENTS.md) の作業分類にあります。
 
----
+## core・project・taskの関係
 
-## core / project / task の関係
-
-```text
-core     AI駆動開発を安全に進めるための共通原則
-project  core を、このスターターキットでどう具体化するかを定義する初期設定
-task     個別工程で何を行い、何を出力し、どこを変更してよいかを定義する（prompts/*.md）
-```
-
-- project は core を**具体化**するものです。core を無効化または緩和しません。
-- task も、core と project の範囲内で実行します。
-- project または task が core と矛盾して読める場合、AIは勝手にどちらかを採用しません。
-- 矛盾・不足・参照先不明は、**人間確認事項**として報告します。
-
-core は「何を守るか」、project は「このプロジェクトでは具体的に何がその値か」を記載します。
-同じ文章を core と project へ複製しません。
-
-### 2種類の判定の置き場
-
-判定は2系統あり、置き場が異なります。混同しないでください。
-
-| 判定 | 値 | 正本 |
+| 層 | 役割 | 場所 |
 |---|---|---|
-| 次工程移行判定（次へ進んでよいか） | `GO` / `条件付きGO` / `STOP` | **core 固定**（`core/20_approval_and_review.md`）。project で変更できません |
-| レビュー結果（成果物の状態） | プロジェクトが定める | **project**（`project/25_review_policy.md`） |
+| core | プロジェクトに依存しない共通原則 | [`core/`](core/) |
+| project | coreをこのスターターキットで具体化した設定 | [`project/`](project/) |
+| task | 個別作業の手順と作業対象 | [`prompts/`](../../prompts/README.md) |
 
----
+各層の関係、変更時の扱い、プロジェクト設定の見方は [`project/00_project_policy.md`](project/00_project_policy.md) を参照してください。
 
-## 利用者が編集するのは project 側です
+## coreの正本
 
-- `docs/rules/core/` はキットの共通原則です。**利用者が通常変更する場所ではありません。**
-- **project 設定が core を無効化することはできません。**
-- `docs/rules/project/` は**現行スターターキットの値が記入済み**です。空欄はありません。
-- そのままでも動きます。プロジェクトの事情と異なる箇所だけを書き換えてください。
-
-### ただし、project 設定だけで完結しない変更があります
-
-project 設定には2種類あります。
-
-| 種類 | 変更範囲 | 例 |
-|---|---|---|
-| **通常の project 設定** | `docs/rules/project/` 配下の変更だけで完結する | 想定読者、実装言語、テストコマンド、ディレクトリ構成、AI更新権限、承認欄の場所 |
-| **キット本体との同期変更が必要な設定** | プロンプト・テンプレート・ツールが同じ値に依存している | レビュー結果ラベル、判定結果の出力形式、テンプレートとプロンプトの対応、集計ツールが解析する固定値 |
-
-後者を変更する場合、**project 設定だけを変更して完了とはしません。** 依存するキット本体の変更を、別の正式な変更作業として同時に行います。
-
-- **AIが勝手にキット本体（`prompts/`、`docs/templates/`、`tools/` など）を変更しません。**
-- 変更対象と影響範囲を整理し、人間の承認後に別作業として実施します。
-- 具体的な同期対象は、該当する project ファイルの「変更する場合の注意」に記載しています。
-
----
-
-## ファイルの役割と正本
-
-### core（共通原則）
-
-| ファイル | 正本となる内容 |
+| ファイル | 主な内容 |
 |---|---|
-| `core/10_workflow.md` | 進め方の骨格、実装前後の整合確認、**未記載と矛盾の区別**、**変更の意味の見極め**、**変更ルート（A〜C）と実施状態の分離**、変更の正本と正本を持たない変更、**人間による直接修正とAIの変更権限の分離**、バグ対応の段階、検証の粒度 |
-| `core/20_approval_and_review.md` | 承認境界、レビューと修正の分離、レビュー結果と次工程移行判定の区別、`GO` / `条件付きGO` / `STOP`、未決事項の分類、**未決事項と判定の関係**、条件付きGOの6項目、STOP時の振る舞い |
-| `core/30_change_safety.md` | 作業対象の限定、ついで修正の禁止、保護対象の枠組み、範囲外資産と依存、共通化の抑制、無関係な文脈を持ち込まない |
-| `core/40_official_docs_and_context.md` | 正式資料の定義、成果物の3分類、**正式資料が意味を定義していない実装詳細**、補助コンテキストの扱い、**コードから正式資料への逆反映**、過去の記録の扱い、テンプレート運用の上位原則 |
-| `core/50_records_and_reporting.md` | 記録の種別と境界、現在地メモ、作業完了報告、レビュー補助メモ、AIの更新範囲の枠組み |
-| `core/60_work_notes.md` | 作業メモの位置づけ、経緯・手戻りを残す原則、個人評価にしない、事実・推測・未確認の区別、READMEと詳細記録の分離、Gitや完成物との関係、完了後の記録、報告と保存の区別 |
+| [`core/10_workflow.md`](core/10_workflow.md) | 進め方、変更の整理、正式資料と実装の整合 |
+| [`core/20_approval_and_review.md`](core/20_approval_and_review.md) | 承認、レビュー、次工程移行判定 |
+| [`core/30_change_safety.md`](core/30_change_safety.md) | 変更範囲、保護対象、共通化の安全境界 |
+| [`core/40_official_docs_and_context.md`](core/40_official_docs_and_context.md) | 正式資料、管理記録、補助コンテキストの区別 |
+| [`core/50_records_and_reporting.md`](core/50_records_and_reporting.md) | 現在地メモ、完了報告、レビュー補助メモ |
+| [`core/60_work_notes.md`](core/60_work_notes.md) | 作業メモに共通する原則 |
 
-### project（このスターターキットの初期設定）
+## projectの正本
 
-| ファイル | 正本となる内容 | 変更頻度 |
-|---|---|---|
-| `project/00_project_policy.md` | プロジェクト識別、設定の索引、記録に含める情報の範囲 | 低 |
-| `project/10_document_structure.md` | **成果物3分類の一覧**、ディレクトリ構成、命名、各種保存先 | 中 |
-| `project/15_document_templates.md` | **テンプレート対応表**、文書種別ごとの見出し運用、テンプレート変更時の確認 | 中 |
-| `project/20_workflow.md` | 標準16ステップ、承認を置く工程、**変更の型ごとの入口と進み方**、バグ対応フローの全体像、工程と task プロンプトの対応 | 中 |
-| `project/25_review_policy.md` | **レビュー結果の評価値**、記録先、集計ツールへの依存、ラベル変更時の同時変更対象 | 中 |
-| `project/30_development_rules.md` | 実装言語、許可依存、実装規約、entrypoint と features の具体的責務 | 高 |
-| `project/40_testing_rules.md` | 試験の単位、検証コマンド、テストファイルの配置 | 高 |
-| `project/50_ai_permissions.md` | 保護対象の一覧、`tasks.md` の工程別更新権限、`docs/context/` の更新権限、承認欄の場所、**人間による直接修正の範囲と、それがAI権限ではないこと** | 中 |
-| `project/60_work_notes.md` | **作業メモ運用の正本**。保存場所・保存単位・命名規則、README必須項目、付随ファイルの扱い、作成候補になる条件、記録対象と粒度の決定主体、AIの利用形態、AIの新規作成・更新権限、完了後の更新方法、context レビューとの関係 | 中 |
+| ファイル | 主な内容 |
+|---|---|
+| [`project/00_project_policy.md`](project/00_project_policy.md) | プロジェクト識別と設定索引 |
+| [`project/10_document_structure.md`](project/10_document_structure.md) | 成果物の分類、配置、命名 |
+| [`project/15_document_templates.md`](project/15_document_templates.md) | 成果物とテンプレートの対応 |
+| [`project/20_workflow.md`](project/20_workflow.md) | 工程、承認を置く位置、各種フロー |
+| [`project/25_review_policy.md`](project/25_review_policy.md) | レビュー結果と集計の運用 |
+| [`project/30_development_rules.md`](project/30_development_rules.md) | 技術構成、実装規約、役割分担 |
+| [`project/40_testing_rules.md`](project/40_testing_rules.md) | テストの単位、検証方法、配置 |
+| [`project/50_ai_permissions.md`](project/50_ai_permissions.md) | AIの権限、保護対象、承認欄の場所 |
+| [`project/60_work_notes.md`](project/60_work_notes.md) | 作業メモの保存方法と運用 |
 
----
+## 関連する入口
 
-## task プロンプトとの接続
-
-`prompts/` 配下の26本すべてに `## 必須参照ルール` があります。内訳は、通常の開発工程task 24本、作業メモ用task 1本（`prompts/prepare_work_note.md`）、キット完全性確認用task 1本（`prompts/review_prompt_integrity.md`）です。
-
-- 通常の24本（開発工程のtask）は、その作業に必要な core 2〜3ファイルと project 2〜3ファイルだけを列挙します。全ルールを読ませません。
-- `prompts/prepare_work_note.md` は、作業メモ案の構成・人間確認・保存または反映指示生成を行う専用taskです。`core/40`・`core/50`・`core/60`・`project/10`・`project/15`・`project/50`・`project/60` を参照します。実装・仕様変更・レビュー修正は行いません。標準の開発工程（仕様→設計→実装→レビュー）には含まれません。
-- `prompts/review_prompt_integrity.md` は、キット自体の整合性をレビューするためのプロンプトです。**core と project の全ファイルを読む唯一の例外**として扱います。通常の開発作業には使いません。
-
-`prompts/prepare_work_note.md` を除く残り25本（通常の開発工程task 24本と `review_prompt_integrity.md`）は、作業完了時に読む `core/50_records_and_reporting.md` を通じて、作業メモの作成候補提案（チャット報告）へ到達します。**これら25本の `## 必須参照ルール` へ `core/60`・`project/60` を個別に追加する運用は取りません。** 作業メモの新規作成・更新自体は `prompts/prepare_work_note.md` に一任します。
-
-### 変更を扱う2つのプロンプト
-
-コードに関する判断を支援するプロンプトが2本あります。**役割が異なるため、混同しないでください。** どちらもファイルを変更しません。
-
-| プロンプト | 見るもの | 中心の問い |
-|---|---|---|
-| `prompts/analyze_code_change_impact.md` | **変更**（これから行う変更／すでに行った変更） | この変更は、正式資料で意味を定義・維持する必要があるか |
-| `prompts/review_design_code_consistency.md` | **現在の状態**（今の正式資料と今のコード） | 現在の正式資料と現在のコードに、意味上の矛盾がないか |
-
-いずれも標準工程の特定ステップに固定されない、随時利用のプロンプトです。
-
-各プロンプトの `## 必須参照ルール`（このtaskで読むルール文書一覧）と `## 参照するファイル`（今回の作業対象資料）は役割が異なります。混同しないでください。
-
----
-
-## 残っている後続作業
-
-人向け文書（`README.md`、`docs/overview.md`、`docs/how_to_use_prompts.md`、`docs/context/README.md`、`docs/tutorials/` など）の、責務別ルール体系（`docs/rules/`）への整理は完了しています。
-
-完全性レビュー（`prompts/review_prompt_integrity.md`）などで改善候補が見つかった場合は、人間が採否を判断したうえで、別作業として反映します。
-
-人向け文書とこのルール体系に差異がある場合、**`docs/rules/` 配下を正としてください。**
-
----
-
-## 番号 60（作業メモ）
-
-`core/60_work_notes.md` と `project/60_work_notes.md` は、**作業メモ**（作業単位のフォルダとREADME.mdを使って、経緯・判断・手戻り・現在地を残す仕組み）のルールとして実装済みです。以前このREADMEでは「将来の作業レポート機能のための予約」としていましたが、今回の実装によりこの2ファイルが正本として稼働します。
-
-- `core/60_work_notes.md`：プロジェクトに依存しない、作業メモに共通する原則
-- `project/60_work_notes.md`：このスターターキット固有の保存場所・保存単位・README形式・付随ファイルの扱い・作成条件・AI権限・完了後の運用
-
-`core/50_records_and_reporting.md` の「記録の種別と境界」表に作業メモの行があり、そこから両ファイルへ接続します。構成・人間確認・保存または反映指示生成は `prompts/prepare_work_note.md` を使います。ひな形は `docs/templates/work_note_readme_template.md`、実際の置き場は `docs/context/work_notes/` です。
-
-### 旧AI作業ログとの関係
-
-`docs/context/ai_work_logs/` の旧AI作業ログは、**旧方式として凍結**しており、今回の作業メモ導入後も凍結を継続します。
-
-- 既存の記録と `docs/templates/ai_work_log_template.md` は、当時の試行と経緯を確認するために保持します。削除しません。
-- 既存の記録の本文を、現在の考え方に合わせて書き直しません。
-- **新しいAI作業ログは原則として作成しません。**
-- 新しい作業知識の記録は、作業メモ（`docs/context/work_notes/`）で扱います。
-
-旧方式と新しい作業メモの違い（保存単位・内容・作成条件・正本性など）は `docs/context/ai_work_logs/README.md` と `docs/context/work_notes/README.md` を参照してください。詳細は `project/15_document_templates.md` の「旧AI作業ログ（凍結）」も参照してください。
+- prompt一覧: [`prompts/README.md`](../../prompts/README.md)
+- promptの使い方: [`docs/how_to_use_prompts.md`](../how_to_use_prompts.md)
+- テンプレート一覧: [`docs/templates/README.md`](../templates/README.md)
+- 補助コンテキスト: [`docs/context/README.md`](../context/README.md)
+- 作業メモ: [`docs/context/work_notes/README.md`](../context/work_notes/README.md)
+- 旧AI作業ログ: [`docs/context/ai_work_logs/README.md`](../context/ai_work_logs/README.md)

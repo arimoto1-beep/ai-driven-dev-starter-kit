@@ -1,18 +1,16 @@
-# 共通モジュール設計メモ
+# 共通化提案
 
-このディレクトリは、複数の機能で共通化する処理が必要になった場合に、設計メモを置く場所です。
+## このディレクトリについて
 
-ただし、このスターターキットでは最初から共通化を前提にしません。
-
-共通化は、機能ごとの関数設計で候補として記録し、人間レビューで必要性を確認してから別タスクとして扱います。
-
-## 方針
-
-- まずは機能内に閉じた実装を優先する
-- 共通化候補は `21_design.md`、レビュー結果、作業報告に提案として書く
-- 人間レビュー前に `src/common/` へ勝手に切り出さない
-- 共通化する場合は、影響を受ける機能とテストを明記する
+`docs/common/` は、複数の機能に関係する共通化提案を置く場所です。提案の位置づけ、共通化の判断、実装先に関するルールは、下記の正本を参照してください。
 
 ## 現在の状態
 
-現時点では、共通モジュールの設計メモはありません。
+現時点では、共通化提案の文書はありません。
+
+## 関連文書
+
+- 共通化と横断的な取り決め: [`../rules/core/30_change_safety.md`](../rules/core/30_change_safety.md)
+- 共通処理と共通化提案の置き場: [`../rules/project/30_development_rules.md`](../rules/project/30_development_rules.md)
+- 提案・補助記録としての配置: [`../rules/project/10_document_structure.md`](../rules/project/10_document_structure.md)
+- 共通化提案のひな形: [`../templates/30_common_proposal_template.md`](../templates/30_common_proposal_template.md)

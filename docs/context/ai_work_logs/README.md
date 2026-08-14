@@ -1,58 +1,26 @@
-# docs/context/ai_work_logs/（旧AI作業ログ・凍結）
+# docs/context/ai_work_logs（旧AI作業ログ）
 
-## このディレクトリは旧方式です
+このディレクトリは、作業メモ方式を導入する前に使われていたAI作業ログを保存しています。旧方式として凍結されていますが、当時の試行や判断経緯を確認できるよう、既存記録とひな形が残されています。
 
-**AI作業ログは旧方式として凍結しています。新しいAI作業ログは原則として作成しません。**
+現在の作業記録は [`docs/context/work_notes/`](../work_notes/README.md) で扱います。旧方式と現在の作業メモの運用上の違いは、関連するルール正本を参照してください。
 
-- このディレクトリは、**旧方式の記録を保存するために残しています。**
-- 既存のログ（`20260704_T-030_*.md`、`20260726_T-031_*.md`）は**削除も書き換えもしません。** 当時の試行と経緯を確認するための記録です。
-- ひな形 `docs/templates/ai_work_log_template.md` も、同じ理由で残しています。
-- **現在の作業記録方式として、`docs/context/work_notes/` が導入されています。** 新しいAI作業ログは作成せず、作業メモ（`docs/context/work_notes/`）を使ってください。新方式の運用正本は `docs/rules/project/60_work_notes.md` です。
-- 作業メモは、旧AI作業ログを単に改名して復活させたものではありません。保存単位・記録項目の自由度・正本性の扱いが異なります。違いの詳細は `docs/context/work_notes/README.md` の「旧 `ai_work_logs/` との違い」を参照してください。
+## 内容
 
----
+| ファイル | 概要 |
+|---|---|
+| [`20260704_T-030_add_ai_work_logs.md`](20260704_T-030_add_ai_work_logs.md) | 旧AI作業ログの追加に関する記録 |
+| [`20260726_T-031_add_code_change_impact_prompt.md`](20260726_T-031_add_code_change_impact_prompt.md) | コード変更影響分析promptの追加に関する記録 |
 
-## 当時の目的（記録として残す）
+## どこから読むか
 
-このディレクトリは、AIに何を依頼し、AIが何を確認し、何を更新し、何を更新しなかったのかを、後から追えるようにするための補助コンテキストとして作られました。
+- 当時の作業経緯は、上の個別ログを参照してください。
+- `docs/context/` 全体の案内は、[`../README.md`](../README.md) を参照してください。
+- 現在の作業メモは、[`../work_notes/README.md`](../work_notes/README.md) を参照してください。
 
-- AIに何を依頼したかを記録する
-- AIが何を確認したか（参照したファイルなど）を記録する
-- AIが何を更新し、何を更新しなかったかを記録する
-- 更新しなかった場合は、その理由を記録する
-- 実行した確認（テスト実行結果など）と、残課題・未確認事項を記録する
+## 位置づけと運用の正本
 
-実際に運用した結果、記録の多くが完成物や Git 差分から読み取れる内容と重複していることが分かり、方式を見直しました。この経緯自体が、既存ログを残している理由です。
-
----
-
-## 位置づけとルールの正本
-
-このディレクトリの記録は**確定仕様ではありません。**
-
-位置づけ（正式資料との関係、矛盾時の扱い）とAIの更新権限は、次を正本とします。**この README では再定義しません。**
-
-- **`docs/rules/core/40_official_docs_and_context.md`** — 正式資料と補助コンテキストの区別、過去の記録の扱い
-- **`docs/rules/project/50_ai_permissions.md`** — AIの更新権限
-- **`docs/rules/project/15_document_templates.md`** — 旧AI作業ログの凍結方針
-- **`docs/rules/project/60_work_notes.md`** — 現在の作業記録方式（作業メモ）の運用正本
-
-`docs/context/` 全体の位置づけは [../README.md](../README.md) を参照してください。
-
----
-
-## 既存ログを読むときの注意
-
-- ここに書かれた内容を、そのまま現在の仕様・設計・実装方針として採用しないでください。
-- **記録された当時の判断であり、現在も有効とは限りません。** 現在の正本は `docs/rules/` 配下と、各 command/app の正式資料です。
-- 現在の正式資料と矛盾する内容があっても、AIは勝手にどちらかを採用せず、人間確認事項として報告します。
-
----
-
-## ファイル名（旧方式の規約・参考）
-
-```text
-YYYYMMDD_<task_id>_<short_title>.md
-```
-
-新規作成はしないため、この規約は既存ログを読む際の参考情報です。
+- 正式資料と過去記録の関係: [`docs/rules/core/40_official_docs_and_context.md`](../../rules/core/40_official_docs_and_context.md)
+- 旧AI作業ログの配置: [`docs/rules/project/10_document_structure.md`](../../rules/project/10_document_structure.md)
+- 旧AI作業ログとテンプレートの扱い: [`docs/rules/project/15_document_templates.md`](../../rules/project/15_document_templates.md)
+- AIの更新権限: [`docs/rules/project/50_ai_permissions.md`](../../rules/project/50_ai_permissions.md)
+- 現在の作業メモ運用: [`docs/rules/project/60_work_notes.md`](../../rules/project/60_work_notes.md)

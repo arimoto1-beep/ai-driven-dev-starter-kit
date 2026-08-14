@@ -128,36 +128,9 @@ prompts/implement_feature.md を参照してください。
 
 ## 汎用プロンプト一覧
 
-バグ修正フロー全体の進め方は `docs/tutorials/040_bug_fix_flow.md` を参照してください。個別プロンプトを単体で使う前に、報告 → 調査 → 修正計画 → 人間承認 → 実装の順番を確認します。
+実在する prompt の用途別一覧は [`prompts/README.md`](../prompts/README.md) を参照してください。各 prompt の出力先、参照ルール、変更範囲、作業手順は、その prompt 自身が正本です。
 
-| プロンプト | 用途 | 主な出力先 |
-|---|---|---|
-| `prompts/create_overview.md` | コマンド/アプリ全体の overview を作成する | `docs/<command_or_app_name>/10_overview.md` |
-| `prompts/create_feature_spec.md` | feature 仕様を作成する | `<対象機能フォルダ>/20_spec.md` |
-| `prompts/create_function_design.md` | 関数設計を作成する | `<対象機能フォルダ>/21_design.md` |
-| `prompts/create_function_call_flow.md` | 関数呼び出し定義を作成する | `<対象機能フォルダ>/22_flow.md` |
-| `prompts/create_test_design.md` | feature 単体のテスト計画を作成する | `<対象機能フォルダ>/23_test_plan.md` |
-| `prompts/create_review_checklist.md` | feature 単体レビュー観点と実装着手承認欄を作成する（承認欄は未チェックで作成） | `<対象機能フォルダ>/24_review_checklist.md` |
-| `prompts/create_integration_test_plan.md` | command/app 単位の結合試験計画を作成する | `docs/<command_or_app_name>/11_integration_test_plan.md` |
-| `prompts/create_common_design_index.md` | 共通設計書の目次・feature 対応表を作成する | `docs/<command_or_app_name>/common_design/30_common_design_index.md` |
-| `prompts/create_file_design.md` | 入出力・中間ファイル・ディレクトリ構成の共通設計書を作成する | `docs/<command_or_app_name>/common_design/31_file_design.md` |
-| `prompts/create_data_design.md` | 共通データ項目・ID体系・ステータス定義の設計書を作成する | `docs/<command_or_app_name>/common_design/32_data_design.md` |
-| `prompts/create_db_design.md` | DB種別・テーブル・カラム・制約・トランザクション方針の設計書を作成する | `docs/<command_or_app_name>/common_design/33_db_design.md` |
-| `prompts/implement_feature.md` | feature 本体と feature 単体テストを作成する（事前に `24_review_checklist.md` の実装着手承認欄がすべてチェック済みであることを確認。未チェックがあれば STOP） | 指定された feature 実装ファイル、feature 単体テストファイル |
-| `prompts/review_feature_source.md` | feature 実装直後のソースレビューを行う（中間チェック。修正はしない） | チャットで報告（ファイル出力なし） |
-| `prompts/implement_entrypoint.md` | `entrypoint.py` と entrypoint のテストを作成する | `src/<command_or_app_name>/entrypoint.py`、`tests/<command_or_app_name>/test_entrypoint_<short_name>.py` |
-| `prompts/implement_integration_test.md` | 結合試験を実装する | `tests/<command_or_app_name>/test_integration_<short_name>.py` |
-| `prompts/review_feature.md` | feature 単体レビューを行う | `<対象機能フォルダ>/25_review_result.md` |
-| `prompts/review_command.md` | command/app 全体レビューを行う | `docs/<command_or_app_name>/12_command_review_result.md` |
-| `prompts/review_context.md` | `docs/context/` を横断探索し、正式資料への反映候補・矛盾候補・未決事項・却下案の混入候補・人間確認事項を候補として整理する（候補のみ。正式資料・docs/context/ は変更しない） | チャットで報告（ファイル出力なし） |
-| `prompts/analyze_code_change_impact.md` | コードに関する**変更**について、正式資料で意味を定義・維持する必要があるかを整理する。**変更前でも変更後でも使える**（Git差分も入力にできる）。変更点ごとに**変更ルート**（A: 反映不要／B: 正本から下流へ／C: 逆反映／判断不能）と根拠、**実施状態**（未着手／一部実施／実施済み、コード先行の有無）、影響範囲、次の作業を報告する（ファイルは変更しない） | チャットで報告（ファイル出力なし） |
-| `prompts/review_design_code_consistency.md` | 指定した scope（feature / command/app / 共通処理など）について、**現在の正式資料と現在のコードに意味上の矛盾がないか**を確認する。「未記載だが問題ではない実装詳細」と「意味上の矛盾」を分けて報告し、正式資料への逆反映候補も別枠で示す（ファイルは変更しない） | チャットで報告（ファイル出力なし） |
-| `prompts/create_bug_report.md` | バグ報告書を作成する（原因調査・修正はしない） | `docs/<command_or_app_name>/bugs/<bug_id>/10_bug_report.md` |
-| `prompts/investigate_bug.md` | バグ原因を調査し調査書を作成する（修正はしない） | `docs/<command_or_app_name>/bugs/<bug_id>/20_bug_investigation.md` |
-| `prompts/create_bug_fix_plan.md` | バグ修正計画書を作成する（承認待ち。修正はしない） | `docs/<command_or_app_name>/bugs/<bug_id>/30_bug_fix_plan.md` |
-| `prompts/implement_bug_fix.md` | 承認済み修正計画に従ってバグを修正する | 修正計画書に記載された実装ファイル、テストファイル |
-| `prompts/prepare_work_note.md` | 作業の経緯・判断・手戻り・現在地を、人間とAIが後から追える作業メモへ構成する。リポジトリを参照できるAIでも参照できないAIでも利用でき、人間確認後、保存できるAIはそのまま保存し、保存できないAIは自己完結した反映指示を生成する（開発工程には含まれない） | `docs/context/work_notes/<work_folder>/README.md` ほか |
-| `prompts/review_prompt_integrity.md` | スターターキット自体のプロンプト・テンプレート・導線の完全性をレビューする（開発対象機能のレビューではない。キットのメンテナンス用） | チャットで報告（ファイル出力なし） |
+バグ対応の prompt を選ぶ場合は、全体の導線として [`docs/tutorials/040_bug_fix_flow.md`](tutorials/040_bug_fix_flow.md) も参照してください。
 
 ---
 
