@@ -75,6 +75,15 @@
 
 このうち `prompts/review_design_code_consistency.md` と `prompts/analyze_code_change_impact.md` は、総合判定として次工程移行判定（`GO` / `条件付きGO` / `STOP`）を出力します。判定値の定義は `docs/rules/core/20_approval_and_review.md` を正本とします。他の2本の出力区分は、それぞれのプロンプトを参照してください。
 
+### オートモードの Gate判定との関係
+
+オートモード（`70_feature_loop.md`）では、Gate記録に `verdict`（`PASS` / `RETURN` / `BLOCKED` / `IN_PROGRESS`）を記録します。
+**`verdict` の定義の正本は `70_feature_loop.md` です。** この4値は、上記のレビュー結果4値とも、`GO` / `条件付きGO` / `STOP` とも別の軸です。
+
+- `verdict` は、次工程移行判定を置き換えません。Gate記録には両方を記録します
+- CP3 の Reviewer は、Gate記録に加えて `25_review_result.md` を作成・更新します。**レビュー結果4値と次工程移行判定は、従来どおり `25_review_result.md` に記録します**
+- したがって `tools/quality_report.py` の集計は、オートモードでも変わりません
+
 ### 両方の判定を記録する
 
 レビュー結果を記録する成果物には、**レビュー結果と次工程移行判定の両方**を記録します。
@@ -127,3 +136,4 @@
 - レビューを行う工程 → `20_workflow.md`
 - レビュー結果の保存先 → `10_document_structure.md`
 - レビュー結果テンプレートの見出し運用 → `15_document_templates.md`
+- オートモードの Gate判定値（`verdict`） → `70_feature_loop.md`

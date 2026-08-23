@@ -38,7 +38,8 @@
 | `common_design/32_data_design.md` | `docs/templates/32_data_design_template.md` | `prompts/create_data_design.md` |
 | `common_design/33_db_design.md` | `docs/templates/33_db_design_template.md` | `prompts/create_db_design.md` |
 | `24_review_checklist.md` | `docs/templates/24_review_checklist_template.md` | `prompts/create_review_checklist.md` |
-| `25_review_result.md` | `docs/templates/25_review_result_template.md` | `prompts/review_feature.md` |
+| `25_review_result.md` | `docs/templates/25_review_result_template.md` | `prompts/review_feature.md`（オートモード CP3 では `prompts/review_stage.md`） |
+| `gates/<連番>_<日時>_<stage>.md` | `docs/templates/gate_record_template.md` | `prompts/review_stage.md` |
 | `12_command_review_result.md` | `docs/templates/12_command_review_result_template.md` | `prompts/review_command.md` |
 | `bugs/<bug_id>/10_bug_report.md` | `docs/templates/10_bug_report_template.md` | `prompts/create_bug_report.md` |
 | `bugs/<bug_id>/20_bug_investigation.md` | `docs/templates/20_bug_investigation_template.md` | `prompts/investigate_bug.md` |
@@ -76,7 +77,7 @@
 | 分類 | 対象（例） | 個別成果物での見出しの扱い |
 |---|---|---|
 | **正本** | `10_overview.md`、`20_spec.md`、`21_design.md`、`22_flow.md`、`23_test_plan.md`、`11_integration_test_plan.md`、`common_design/` 配下 | **標準構成の見出しをすべて維持する。** 情報がない場合も削除せず、`未定`、`該当なし`、`確認中`、`人間判断待ち`、`今回は対象外` のように状態を記載する |
-| **正式な管理記録** | `24_review_checklist.md`、`25_review_result.md`、`12_command_review_result.md`、`bugs/<bug_id>/` 配下 | **標準構成の見出しをすべて維持する。** 証跡の欠落を防ぐため、正本と同じ扱いとする |
+| **正式な管理記録** | `24_review_checklist.md`、`25_review_result.md`、`12_command_review_result.md`、`gates/` 配下、`bugs/<bug_id>/` 配下 | **標準構成の見出しをすべて維持する。** 証跡の欠落を防ぐため、正本と同じ扱いとする |
 | **提案・補助記録** | `tasks.md`、`30_common_proposal.md`、`docs/context/` 配下 | **該当しない見出しを、その成果物の中で省略してよい。** 全項目を「該当なし」で埋める運用にはしない |
 
 **提案・補助記録での見出しの省略は、テンプレート定義の変更には当たりません。** テンプレートファイルにも標準構成にも手を加えないためです。

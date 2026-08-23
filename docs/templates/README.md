@@ -26,6 +26,7 @@
 - feature レビュー観点: [`24_review_checklist_template.md`](24_review_checklist_template.md)
 - feature 単体レビュー結果: [`25_review_result_template.md`](25_review_result_template.md)
 - コマンド／アプリ全体レビュー結果: [`12_command_review_result_template.md`](12_command_review_result_template.md)
+- Gate記録（オートモード）: [`gate_record_template.md`](gate_record_template.md)
 
 ## バグ対応
 

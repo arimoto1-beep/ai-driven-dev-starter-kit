@@ -49,6 +49,7 @@
 |---|---|
 | feature 単体レビュー観点・実装着手承認欄 | `.../features/<feature_name>/24_review_checklist.md` |
 | feature 単体レビュー結果 | 同上 `/25_review_result.md` |
+| **Gate記録（オートモード）** | 同上 `/gates/<連番4桁>_<タイムスタンプ>_<stage小文字>.md` |
 | command/app 全体レビュー結果 | `docs/<command_or_app_name>/12_command_review_result.md` |
 | バグ報告書 | `docs/<command_or_app_name>/bugs/<bug_id>/10_bug_report.md` |
 | バグ調査書 | 同上 `/20_bug_investigation.md` |
@@ -110,6 +111,9 @@ docs/
         23_test_plan.md
         24_review_checklist.md
         25_review_result.md
+        gates/
+          0001_20260822T161400_g0.md
+          0002_20260822T163000_cp1.md
     bugs/
       <bug_id>/
         10_bug_report.md
@@ -132,7 +136,11 @@ tests/
     test_integration_<short_name>.py
     features/
       test_<feature_name>.py
+  tools/
+    test_feature_runner.py
 ```
+
+`tests/tools/` は、`tools/` 配下の補助ツールに対するテストです。command/app の feature テストとは別枠として扱います。
 
 その他の置き場:
 
@@ -170,3 +178,4 @@ tests/
 - レビュー結果の評価値 → `25_review_policy.md`
 - 誰が更新してよいか → `50_ai_permissions.md`
 - 作業メモの保存方法・運用の具体値 → `60_work_notes.md`
+- Gate記録の命名・front matter・immutable の扱い → `70_feature_loop.md`

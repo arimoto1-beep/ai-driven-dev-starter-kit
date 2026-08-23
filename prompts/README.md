@@ -6,6 +6,18 @@
 
 各 prompt の具体的な手順、必須参照ルール、参照対象、変更範囲は、その prompt 自身に記載されています。ルールの正本は [`docs/rules/`](../docs/rules/README.md) 配下です。
 
+## オートモード（feature 収束ループ）
+
+`tools/feature_runner.py` が、この2本を別プロセスで交互に起動します。単独で手動実行することもできます。
+仕組みの正本は [`docs/rules/project/70_feature_loop.md`](../docs/rules/project/70_feature_loop.md) です。
+
+| prompt | 用途 |
+|---|---|
+| [`run_stage.md`](run_stage.md) | **Worker**。stage の成果物を作成し、FINDING を修正する |
+| [`review_stage.md`](review_stage.md) | **Reviewer**。stage をレビューし、収束を判定し、Gate記録を作成する |
+
+下記の個別 prompt は、**マニュアルモード**として従来どおり利用できます。オートモードの Worker は、これらの個別 prompt へ委譲します。
+
 ## 文書・設計作成
 
 | prompt | 用途 |
@@ -66,4 +78,5 @@
 
 - prompt の使い方: [`docs/how_to_use_prompts.md`](../docs/how_to_use_prompts.md)
 - 工程と prompt の対応: [`docs/rules/project/20_workflow.md`](../docs/rules/project/20_workflow.md)
+- オートモードの正本: [`docs/rules/project/70_feature_loop.md`](../docs/rules/project/70_feature_loop.md)
 - ルール体系の索引: [`docs/rules/README.md`](../docs/rules/README.md)
