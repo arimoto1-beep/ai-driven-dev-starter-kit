@@ -60,7 +60,7 @@ def test_read_config_from_actual_rule_document():
     """実際の 70_feature_loop.md から設定を読めること。"""
     config = fr.read_config(REPO_ROOT)
 
-    assert config["stages"] == "G0, CP1, G2, CP3"
+    assert config["stages"] == "CP1, G1, G2, CP3"
     assert config["human_gates"] == "CP1, CP3"
     assert config["role_build"] == "cheap"
     assert "stage_cp3_reviewer" in config
@@ -91,11 +91,11 @@ def write_record(directory: Path, name: str, **fields) -> Path:
 
 
 def test_read_front_matter(tmp_path):
-    path = write_record(tmp_path, "0001_x_g0.md", verdict="PASS", gate="G0", return_to="")
+    path = write_record(tmp_path, "0001_x_cp1.md", verdict="PASS", gate="CP1", return_to="")
     front = fr.read_front_matter(path)
 
     assert front["verdict"] == "PASS"
-    assert front["gate"] == "G0"
+    assert front["gate"] == "CP1"
     assert front["return_to"] == ""
 
 
@@ -121,27 +121,27 @@ def test_list_records_is_sorted_by_sequence(feature):
     gates = root / feature_dir / "gates"
 
     write_record(gates, "0010_20260101T000000_g2.md", verdict="PASS", gate="G2")
-    write_record(gates, "0002_20260101T000000_cp1.md", verdict="PASS", gate="CP1")
+    write_record(gates, "0002_20260101T000000_g1.md", verdict="PASS", gate="G1")
 
     names = [p.name for p in fr.list_records(root, feature_dir)]
-    assert names == ["0002_20260101T000000_cp1.md", "0010_20260101T000000_g2.md"]
+    assert names == ["0002_20260101T000000_g1.md", "0010_20260101T000000_g2.md"]
 
 
 def test_next_seq_increments(feature):
     root, feature_dir = feature
     assert fr.next_seq(root, feature_dir) == 1
 
-    write_record(root / feature_dir / "gates", "0007_x_g0.md", verdict="PASS", gate="G0")
+    write_record(root / feature_dir / "gates", "0007_x_cp1.md", verdict="PASS", gate="CP1")
     assert fr.next_seq(root, feature_dir) == 8
 
 
 def test_new_record_path_does_not_overwrite(feature):
     root, feature_dir = feature
-    first = fr.new_record_path(root, feature_dir, "CP1")
+    first = fr.new_record_path(root, feature_dir, "G1")
     first.write_text("既存", encoding="utf-8")
 
     # 同じ連番・同じ秒でも、既存ファイルを潰さない名前になること
-    monkey = fr.new_record_path(root, feature_dir, "CP1")
+    monkey = fr.new_record_path(root, feature_dir, "G1")
     assert monkey != first
 
 
@@ -149,9 +149,9 @@ def test_new_record_path_does_not_overwrite(feature):
 
 
 CONFIG = {
-    "stages": "G0, CP1, G2, CP3",
+    "stages": "CP1, G1, G2, CP3",
     "human_gates": "CP1, CP3",
-    "approval_heading_cp1": "下流進行承認",
+    "approval_heading_cp1": "仕様承認",
     "approval_heading_cp3": "受け入れ判断",
 }
 
@@ -161,20 +161,20 @@ def test_resolve_action_starts_at_first_stage(feature):
     action = fr.resolve_action(root, CONFIG, feature_dir)
 
     assert action.kind == "run"
-    assert action.stage == "G0"
+    assert action.stage == "CP1"
 
 
 def test_resolve_action_advances_after_ai_gate_pass(feature):
     root, feature_dir = feature
-    write_record(root / feature_dir / "gates", "0001_x_g0.md", verdict="PASS", gate="G0")
+    write_record(root / feature_dir / "gates", "0002_x_g1.md", verdict="PASS", gate="G1")
 
     action = fr.resolve_action(root, CONFIG, feature_dir)
-    assert (action.kind, action.stage) == ("run", "CP1")
+    assert (action.kind, action.stage) == ("run", "G2")
 
 
 def test_resolve_action_waits_for_human_at_human_gate(feature):
     root, feature_dir = feature
-    write_record(root / feature_dir / "gates", "0002_x_cp1.md", verdict="PASS", gate="CP1")
+    write_record(root / feature_dir / "gates", "0001_x_cp1.md", verdict="PASS", gate="CP1")
 
     action = fr.resolve_action(root, CONFIG, feature_dir)
     assert action.kind == "await_human"
@@ -182,23 +182,23 @@ def test_resolve_action_waits_for_human_at_human_gate(feature):
 
 def test_resolve_action_continues_after_human_approval(feature):
     root, feature_dir = feature
-    path = write_record(root / feature_dir / "gates", "0002_x_cp1.md", verdict="PASS", gate="CP1")
+    path = write_record(root / feature_dir / "gates", "0001_x_cp1.md", verdict="PASS", gate="CP1")
     path.write_text(
         path.read_text(encoding="utf-8")
-        + "\n### 下流進行承認\n\n- [x] 回答した\n- [x] 承認する\n",
+        + "\n### 仕様承認\n\n- [x] 回答した\n- [x] 承認する\n",
         encoding="utf-8",
     )
 
     action = fr.resolve_action(root, CONFIG, feature_dir)
-    assert (action.kind, action.stage) == ("run", "G2")
+    assert (action.kind, action.stage) == ("run", "G1")
 
 
 def test_resolve_action_resumes_in_progress_as_fix(feature):
     root, feature_dir = feature
-    write_record(root / feature_dir / "gates", "0002_x_cp1.md", verdict="IN_PROGRESS", gate="CP1")
+    write_record(root / feature_dir / "gates", "0002_x_g1.md", verdict="IN_PROGRESS", gate="G1")
 
     action = fr.resolve_action(root, CONFIG, feature_dir)
-    assert (action.kind, action.stage) == ("fix", "CP1")
+    assert (action.kind, action.stage) == ("fix", "G1")
 
 
 def test_resolve_action_follows_return_target(feature):
@@ -235,9 +235,9 @@ def test_resolve_action_stops_on_blocked(feature):
     root, feature_dir = feature
     write_record(
         root / feature_dir / "gates",
-        "0001_x_g0.md",
+        "0001_x_cp1.md",
         verdict="BLOCKED",
-        gate="G0",
+        gate="CP1",
         blocked_reason="business_decision",
     )
 
@@ -263,10 +263,10 @@ def test_count_returns_to(feature):
 
     write_record(gates, "0001_x_cp3.md", verdict="RETURN", gate="CP3", return_to="G2")
     write_record(gates, "0002_x_cp3.md", verdict="RETURN", gate="CP3", return_to="G2")
-    write_record(gates, "0003_x_cp3.md", verdict="RETURN", gate="CP3", return_to="CP1")
+    write_record(gates, "0003_x_cp3.md", verdict="RETURN", gate="CP3", return_to="G1")
 
     assert fr.count_returns_to(root, feature_dir, "G2") == 2
-    assert fr.count_returns_to(root, feature_dir, "CP1") == 1
+    assert fr.count_returns_to(root, feature_dir, "G1") == 1
 
 
 # ---------------------------------------------------------------- 人間確認欄
@@ -274,9 +274,9 @@ def test_count_returns_to(feature):
 
 def test_is_approved_requires_all_boxes_checked(tmp_path):
     path = tmp_path / "record.md"
-    path.write_text("### 下流進行承認\n\n- [x] A\n- [ ] B\n", encoding="utf-8")
+    path.write_text("### 仕様承認\n\n- [x] A\n- [ ] B\n", encoding="utf-8")
 
-    assert fr.is_approved(path, "下流進行承認") is False
+    assert fr.is_approved(path, "仕様承認") is False
 
 
 def test_is_approved_ignores_unchecked_options_outside_section(tmp_path):
@@ -284,18 +284,18 @@ def test_is_approved_ignores_unchecked_options_outside_section(tmp_path):
     path = tmp_path / "record.md"
     path.write_text(
         "### 判断してほしいこと\n\n- [x] AI案で確定\n- [ ] 別案で確定\n\n"
-        "### 下流進行承認\n\n- [x] 回答した\n- [x] 承認する\n",
+        "### 仕様承認\n\n- [x] 回答した\n- [x] 承認する\n",
         encoding="utf-8",
     )
 
-    assert fr.is_approved(path, "下流進行承認") is True
+    assert fr.is_approved(path, "仕様承認") is True
 
 
 def test_is_approved_false_when_section_missing(tmp_path):
     path = tmp_path / "record.md"
     path.write_text("### 別の見出し\n\n- [x] A\n", encoding="utf-8")
 
-    assert fr.is_approved(path, "下流進行承認") is False
+    assert fr.is_approved(path, "仕様承認") is False
 
 
 def test_read_human_note(tmp_path):
@@ -404,7 +404,7 @@ def test_guard_does_not_modify_working_tree(git_repo):
 def test_is_allowed_matches_directory_prefix():
     allowed = ["docs/demo_app/features/demo/gates/"]
 
-    assert fr.is_allowed("docs/demo_app/features/demo/gates/0001_x_g0.md", allowed) is True
+    assert fr.is_allowed("docs/demo_app/features/demo/gates/0001_x_cp1.md", allowed) is True
     assert fr.is_allowed("docs/demo_app/features/demo/20_spec.md", allowed) is False
 
 
@@ -467,7 +467,7 @@ def test_stage_role_scopes_differ_at_cp3():
     assert not any(path.startswith("tests/") for path in reviewer)
 
 
-@pytest.mark.parametrize("stage", ["g0", "cp1", "g2"])
+@pytest.mark.parametrize("stage", ["cp1", "g1", "g2"])
 def test_reviewer_scope_is_gates_only_before_cp3(stage):
     config = fr.read_config(REPO_ROOT)
     ctx = {"app": "demo_app", "feature": "demo", "feature_dir": "docs/demo_app/features/demo"}
@@ -480,7 +480,7 @@ def test_reviewer_scope_is_gates_only_before_cp3(stage):
 @pytest.mark.parametrize(
     ("stage", "baseline"),
     [
-        ("cp1", "docs/demo_app/features/demo/20_spec.md"),
+        ("g1", "docs/demo_app/features/demo/20_spec.md"),
         ("g2", "docs/demo_app/features/demo/21_design.md"),
         ("cp3", "docs/demo_app/features/demo/23_test_plan.md"),
     ],
@@ -500,9 +500,9 @@ def test_worker_scope_never_includes_gates():
     config = fr.read_config(REPO_ROOT)
     ctx = {"app": "demo_app", "feature": "demo", "feature_dir": "docs/demo_app/features/demo"}
 
-    for stage in ("g0", "cp1", "g2", "cp3"):
+    for stage in ("cp1", "g1", "g2", "cp3"):
         worker = fr.expand(config[f"stage_{stage}_worker"], ctx)
-        record = "docs/demo_app/features/demo/gates/0001_x_g0.md"
+        record = "docs/demo_app/features/demo/gates/0001_x_cp1.md"
 
         assert fr.is_allowed(record, worker) is False, f"stage={stage}"
 
@@ -552,10 +552,10 @@ def test_build_argv_substitutes_placeholders():
 def test_build_argv_keeps_instruction_as_single_argument():
     """指示文にカンマや改行が含まれても、1引数のまま渡ること。"""
     config = {"ai_command": "some-cli,-p,{instruction}"}
-    argv = fr.build_argv(config, "stage: CP1, mode: create\n対象: docs/a/b", "m")
+    argv = fr.build_argv(config, "stage: G1, mode: create\n対象: docs/a/b", "m")
 
     assert len(argv) == 3
-    assert argv[2] == "stage: CP1, mode: create\n対象: docs/a/b"
+    assert argv[2] == "stage: G1, mode: create\n対象: docs/a/b"
 
 
 def test_build_argv_rejects_placeholder_config():
@@ -580,30 +580,33 @@ model_cheap    = m-cheap
 model_standard = m-standard
 model_strong   = m-strong
 ai_command     = fake,{instruction},{model}
-stages               = G0, CP1, G2, CP3
+stages               = CP1, G1, G2, CP3
 human_gates          = CP1, CP3
+spec_stage           = CP1
+spec_artifact        = {feature_dir}/20_spec.md
 max_rounds           = 3
 max_returns_per_gate = 3
 review_independence  = separate_context
-approval_heading_cp1 = 下流進行承認
+approval_heading_cp1 = 仕様承認
+approval_heading_g1  = 設計進行承認
 approval_heading_g2  = 実装工程進行承認
 approval_heading_cp3 = 受け入れ判断
 human_note_heading   = 気になる点
-stage_g0_worker_role  = design
-stage_cp1_worker_role = design
+stage_cp1_worker_role  = design
+stage_g1_worker_role = design
 stage_g2_worker_role  = design
 stage_cp3_worker_role = build
 reviewer_role         = review
-stage_g0_worker    = {feature_dir}/20_spec.md
-stage_g0_reviewer  = {feature_dir}/gates/
-stage_cp1_worker   = {feature_dir}/21_design.md, {feature_dir}/22_flow.md
-stage_cp1_reviewer = {feature_dir}/gates/
+stage_cp1_worker    = {feature_dir}/20_spec.md
+stage_cp1_reviewer  = {feature_dir}/gates/
+stage_g1_worker   = {feature_dir}/21_design.md, {feature_dir}/22_flow.md
+stage_g1_reviewer = {feature_dir}/gates/
 stage_g2_worker    = {feature_dir}/23_test_plan.md, {feature_dir}/24_review_checklist.md
 stage_g2_reviewer  = {feature_dir}/gates/
 stage_cp3_worker   = src/{app}/features/, tests/{app}/
 stage_cp3_reviewer = {feature_dir}/gates/, {feature_dir}/25_review_result.md
-stage_g0_prompts   = prompts/create_feature_spec.md
-stage_cp1_prompts  = prompts/create_function_design.md
+stage_cp1_prompts   = prompts/create_feature_spec.md
+stage_g1_prompts  = prompts/create_function_design.md
 stage_g2_prompts   = prompts/create_test_design.md
 stage_cp3_prompts  = prompts/implement_feature.md
 ```
@@ -679,6 +682,21 @@ class FakeAI:
 
     def reviewer_calls(self) -> list[dict]:
         return [c for c in self.calls if fr.REVIEWER_PROMPT in c["prompt"]]
+
+
+def approve_spec(root, config, ctx, name="0001_x_cp1.md", seq=1):
+    """承認済みの仕様 baseline（CP1 記録）を作る。製造 stage のテスト前提。"""
+    target = fr.spec_path(root, config, ctx)
+    record = write_record(
+        root / ctx["feature_dir"] / "gates", name,
+        verdict="PASS", next_step="GO", gate="CP1", run_seq=seq,
+        recorded_by="reviewer", spec_hash=fr.file_hash(target),
+    )
+    record.write_text(
+        record.read_text(encoding="utf-8") + approval("仕様承認", True),
+        encoding="utf-8",
+    )
+    return record
 
 
 def latest_front(root, ctx):
@@ -808,9 +826,9 @@ def test_review_current_skips_worker(sandbox, monkeypatch):
     """--review-current で Worker を再実行せず、現在の成果物をレビューすること。"""
     root, config, ctx = sandbox
 
-    path = write_record(root / ctx["feature_dir"] / "gates", "0001_x_cp1.md",
-                        verdict="PASS", gate="CP1", run_seq=1)
-    path.write_text(path.read_text(encoding="utf-8") + approval("下流進行承認", True),
+    path = write_record(root / ctx["feature_dir"] / "gates", "0001_x_g1.md",
+                        verdict="PASS", gate="G1", run_seq=1)
+    path.write_text(path.read_text(encoding="utf-8") + approval("仕様承認", True),
                     encoding="utf-8")
 
     # 人間が手で 23_test_plan.md を修正した状態
@@ -844,9 +862,9 @@ def test_review_current_returns_to_auto_mode(sandbox, monkeypatch):
     """--review-current の後、通常のオートモードへ戻れること。"""
     root, config, ctx = sandbox
 
-    path = write_record(root / ctx["feature_dir"] / "gates", "0001_x_cp1.md",
-                        verdict="PASS", gate="CP1", run_seq=1)
-    path.write_text(path.read_text(encoding="utf-8") + approval("下流進行承認", True),
+    path = write_record(root / ctx["feature_dir"] / "gates", "0001_x_g1.md",
+                        verdict="PASS", gate="G1", run_seq=1)
+    path.write_text(path.read_text(encoding="utf-8") + approval("仕様承認", True),
                     encoding="utf-8")
 
     fake = FakeAI(root, lambda info: {
@@ -890,13 +908,10 @@ def test_normal_run_invokes_worker_then_reviewer(sandbox, monkeypatch):
 def test_reviewer_receives_human_gate_flag(sandbox, monkeypatch):
     """human_gate は stage 名ではなく設定から Reviewer へ渡ること。"""
     root, config, ctx = sandbox
-    g2_config = dict(config, human_gates="CP1, G2, CP3")
+    g1_config = dict(config, human_gates="CP1, G1, CP3",
+                     approval_heading_g1="設計進行承認")
 
-    write_record(root / ctx["feature_dir"] / "gates", "0001_x_cp1.md",
-                 verdict="PASS", gate="CP1", run_seq=1)
-    path = fr.latest_record(root, ctx["feature_dir"])
-    path.write_text(path.read_text(encoding="utf-8") + approval("下流進行承認", True),
-                    encoding="utf-8")
+    approve_spec(root, config, ctx)
 
     fake = FakeAI(root, lambda info: {
         "gate": info["stage"], "run_seq": info["run_seq"], "recorded_by": "reviewer",
@@ -904,9 +919,602 @@ def test_reviewer_receives_human_gate_flag(sandbox, monkeypatch):
     })
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    fr.cmd_run(root, g2_config, ctx, {}, once=True, dry_run=False)
+    fr.cmd_run(root, g1_config, ctx, {}, once=True, dry_run=False)
 
+    assert fake.reviewer_calls()[0]["stage"] == "G1"
     assert fake.reviewer_calls()[0]["human_gate"] == "yes"
+
+
+# ---------------------------------------------------------------- 仕様 baseline の境界
+
+
+def test_spec_stage_is_first_and_human_gate():
+    """CP1 が最初の stage であり、Human Gate であること（製造への入口）。"""
+    config = fr.read_config(REPO_ROOT)
+
+    stages = fr.split_list(config["stages"])
+    human_gates = fr.split_list(config["human_gates"])
+
+    assert stages[0] == "CP1"
+    assert config["spec_stage"] == "CP1"
+    assert "CP1" in human_gates, "CP1 を Human Gate から外すと承認なしで製造が始まる"
+
+
+def test_manufacturing_stages_are_after_spec_stage():
+    config = fr.read_config(REPO_ROOT)
+
+    assert fr.is_manufacturing_stage(config, "CP1") is False
+    assert fr.is_manufacturing_stage(config, "G1") is True
+    assert fr.is_manufacturing_stage(config, "G2") is True
+    assert fr.is_manufacturing_stage(config, "CP3") is True
+
+
+def test_spec_is_not_writable_from_manufacturing_stages():
+    """9. 承認済み仕様が、製造 stage の変更範囲に含まれないこと。"""
+    config = fr.read_config(REPO_ROOT)
+    ctx = {"app": "demo_app", "feature": "demo", "feature_dir": "docs/demo_app/features/demo"}
+    spec = "docs/demo_app/features/demo/20_spec.md"
+
+    # 仕様工程の Worker だけが 20_spec.md を書ける
+    assert fr.is_allowed(spec, fr.expand(config["stage_cp1_worker"], ctx)) is True
+
+    for stage in ("g1", "g2", "cp3"):
+        worker = fr.expand(config[f"stage_{stage}_worker"], ctx)
+        reviewer = fr.expand(config[f"stage_{stage}_reviewer"], ctx)
+
+        assert fr.is_allowed(spec, worker) is False, f"stage={stage} の Worker"
+        assert fr.is_allowed(spec, reviewer) is False, f"stage={stage} の Reviewer"
+
+
+def test_spec_review_runs_reviewer_only(sandbox, monkeypatch):
+    """1. 仕様レビューを単独実行でき、Worker が起動しないこと。"""
+    root, config, ctx = sandbox
+
+    fake = FakeAI(root, lambda info: {
+        "gate": info["stage"], "run_seq": info["run_seq"], "recorded_by": "reviewer",
+        "verdict": "PASS", "next_step": "GO", "spec_hash": info["spec_hash"],
+        "mode": info["mode"],
+    })
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    code = fr.cmd_run(root, config, ctx, {}, once=False, dry_run=False, spec_review=True)
+
+    assert code == 0
+    assert fake.worker_calls() == [], "仕様レビューで Worker を起動してはいけない"
+    assert len(fake.reviewer_calls()) == 1
+    assert fake.reviewer_calls()[0]["stage"] == "CP1"
+
+    front = latest_front(root, ctx)
+    assert front["gate"] == "CP1"
+    assert front["spec_hash"] == fr.file_hash(fr.spec_path(root, config, ctx))
+
+
+def test_spec_review_can_run_repeatedly(sandbox, monkeypatch):
+    """1'. 仕様レビューを何度でも実行でき、過去の記録が残ること。"""
+    root, config, ctx = sandbox
+
+    fake = FakeAI(root, lambda info: {
+        "gate": info["stage"], "run_seq": info["run_seq"], "recorded_by": "reviewer",
+        "verdict": "PASS", "next_step": "GO", "spec_hash": info["spec_hash"],
+    })
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    for _ in range(3):
+        fr.cmd_run(root, config, ctx, {}, once=False, dry_run=False, spec_review=True)
+
+    records = fr.list_records(root, ctx["feature_dir"])
+
+    assert len(records) == 3
+    assert [p.name.split("_", 1)[0] for p in records] == ["0001", "0002", "0003"]
+
+
+def test_spec_review_blocked_does_not_reach_manufacturing(sandbox, monkeypatch):
+    """2. 仕様不足を検出した場合、製造側へ進まず人間へ返ること。"""
+    root, config, ctx = sandbox
+
+    fake = FakeAI(root, lambda info: {
+        "gate": info["stage"], "run_seq": info["run_seq"], "recorded_by": "reviewer",
+        "verdict": "BLOCKED", "next_step": "STOP",
+        "blocked_reason": "business_decision", "spec_hash": info["spec_hash"],
+    })
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    fr.cmd_run(root, config, ctx, {}, once=False, dry_run=False, spec_review=True)
+
+    # 製造 stage は一度も起動していない
+    assert all(call["stage"] == "CP1" for call in fake.calls)
+
+    action = fr.resolve_action(root, config, ctx["feature_dir"])
+    assert action.kind == "stop"
+    assert action.note == "business_decision"
+
+
+def test_spec_review_rejected_without_spec(sandbox):
+    root, config, ctx = sandbox
+    (root / ctx["feature_dir"] / "20_spec.md").unlink()
+
+    with pytest.raises(SystemExit) as error:
+        fr.cmd_run(root, config, ctx, {}, once=False, dry_run=False, spec_review=True)
+
+    assert "仕様書" in str(error.value)
+
+
+def test_spec_review_is_exclusive_with_other_modes(sandbox):
+    root, config, ctx = sandbox
+
+    with pytest.raises(SystemExit):
+        fr.cmd_run(root, config, ctx, {}, once=False, dry_run=False,
+                   spec_review=True, retry_blocked=True)
+
+
+# ---------------------------------------------------------------- Manufacturing Preflight
+
+
+def test_preflight_blocks_without_human_approval(sandbox, monkeypatch):
+    """3. 仕様レビュー PASS でも、人間承認がなければ製造しないこと。"""
+    root, config, ctx = sandbox
+
+    # 承認欄が未チェックの CP1 PASS
+    record = write_record(
+        root / ctx["feature_dir"] / "gates", "0001_x_cp1.md",
+        verdict="PASS", next_step="GO", gate="CP1", run_seq=1,
+        spec_hash=fr.file_hash(fr.spec_path(root, config, ctx)),
+    )
+    record.write_text(
+        record.read_text(encoding="utf-8") + approval("仕様承認", False),
+        encoding="utf-8",
+    )
+
+    design = root / ctx["feature_dir"] / "21_design.md"
+    before = design.read_text(encoding="utf-8")
+
+    fake = FakeAI(root, lambda info: {})
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    code = fr.cmd_run(root, config, ctx, {}, once=False, dry_run=False)
+
+    assert code == 0, "承認待ちは異常停止ではない"
+    assert fake.calls == [], "承認前に製造 stage を起動してはいけない"
+    assert design.read_text(encoding="utf-8") == before, "21_design.md が生成・更新されてはいけない"
+
+    action = fr.resolve_action(root, config, ctx["feature_dir"])
+    assert (action.kind, action.stage) == ("await_human", "CP1")
+
+
+def test_preflight_blocks_when_spec_changed_after_approval(sandbox, monkeypatch):
+    """4. 承認後に 20_spec.md が変更されたら、製造を開始しないこと。"""
+    root, config, ctx = sandbox
+    approve_spec(root, config, ctx)
+
+    # 承認後に仕様を変更する
+    spec = fr.spec_path(root, config, ctx)
+    spec.write_text(spec.read_text(encoding="utf-8") + "\n- REQ-002: 後から追加\n", encoding="utf-8")
+
+    fake = FakeAI(root, lambda info: {})
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    code = fr.cmd_run(root, config, ctx, {}, once=False, dry_run=False)
+
+    assert code == 1
+    assert fake.calls == [], "baseline がずれた状態で製造してはいけない"
+
+    front = latest_front(root, ctx)
+    assert front["verdict"] == "BLOCKED"
+    assert front["blocked_reason"] == "spec_not_approved"
+    assert front["recorded_by"] == "runner"
+    assert front["gate"] == "CP1"
+
+
+def test_preflight_blocks_when_approval_has_no_spec_hash(sandbox, monkeypatch):
+    """spec_hash が記録されていない承認は、有効な baseline として扱わないこと。"""
+    root, config, ctx = sandbox
+
+    record = write_record(
+        root / ctx["feature_dir"] / "gates", "0001_x_cp1.md",
+        verdict="PASS", next_step="GO", gate="CP1", run_seq=1, spec_hash="",
+    )
+    record.write_text(
+        record.read_text(encoding="utf-8") + approval("仕様承認", True),
+        encoding="utf-8",
+    )
+
+    fake = FakeAI(root, lambda info: {})
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    assert fr.cmd_run(root, config, ctx, {}, once=False, dry_run=False) == 1
+    assert fake.calls == []
+
+
+def test_preflight_passes_with_approved_matching_baseline(sandbox, monkeypatch):
+    """5. 仕様レビュー PASS ＋ 人間承認 ＋ 同一 baseline なら製造へ進むこと。"""
+    root, config, ctx = sandbox
+    approve_spec(root, config, ctx)
+
+    fake = FakeAI(root, lambda info: {
+        "gate": info["stage"], "run_seq": info["run_seq"], "recorded_by": "reviewer",
+        "verdict": "PASS", "next_step": "GO",
+    })
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    code = fr.cmd_run(root, config, ctx, {}, once=True, dry_run=False)
+
+    assert code == 0
+    assert fake.worker_calls()[0]["stage"] == "G1"
+    assert "21_design.md" in fake.worker_calls()[0]["変更してよいファイル"]
+
+
+def test_approval_does_not_need_to_be_latest_record(sandbox, monkeypatch):
+    """承認は「どの仕様を承認したか」を表す。最新記録である必要はないこと。"""
+    root, config, ctx = sandbox
+    approve_spec(root, config, ctx, name="0001_x_cp1.md", seq=1)
+
+    # 仕様は変えずに、もう一度レビューだけ回す（承認欄は未チェック）
+    write_record(
+        root / ctx["feature_dir"] / "gates", "0002_x_cp1.md",
+        verdict="PASS", next_step="GO", gate="CP1", run_seq=2,
+        spec_hash=fr.file_hash(fr.spec_path(root, config, ctx)),
+    )
+
+    ok, detail = fr.check_spec_baseline(root, config, ctx)
+
+    assert ok, detail
+
+
+def test_preflight_accepts_older_approval_when_current_hash_matches(sandbox):
+    """A承認→B承認→Aへ戻した場合、内容一致する過去のA承認を利用できること。"""
+    root, config, ctx = sandbox
+    spec = fr.spec_path(root, config, ctx)
+
+    original = spec.read_text(encoding="utf-8")
+    approval_a = approve_spec(root, config, ctx, name="0001_x_cp1.md", seq=1)
+
+    spec.write_text(original + "\n- REQ-002: Bだけの要求\n", encoding="utf-8")
+    approve_spec(root, config, ctx, name="0002_x_cp1.md", seq=2)
+
+    # 現在の仕様をAへ戻す。最新承認Bではなく、過去のA承認が一致する。
+    spec.write_text(original, encoding="utf-8")
+
+    matched, front = fr.find_spec_approval(
+        root, config, ctx["feature_dir"], required_spec_hash=fr.file_hash(spec),
+    )
+    ok, detail = fr.check_spec_baseline(root, config, ctx)
+
+    assert matched == approval_a
+    assert front["spec_hash"] == fr.file_hash(spec)
+    assert ok, detail
+
+
+def test_check_spec_baseline_reports_reason(sandbox):
+    root, config, ctx = sandbox
+
+    ok, detail = fr.check_spec_baseline(root, config, ctx)
+
+    assert ok is False
+    assert "仕様承認" in detail
+
+
+def test_reviewer_receives_spec_hash_only_at_spec_stage(sandbox):
+    root, config, ctx = sandbox
+
+    assert fr.current_spec_hash(root, config, ctx, "CP1") != ""
+    assert fr.current_spec_hash(root, config, ctx, "G1") == ""
+    assert fr.current_spec_hash(root, config, ctx, "CP3") == ""
+
+
+def test_spec_hash_changes_with_content(sandbox):
+    root, config, ctx = sandbox
+    spec = fr.spec_path(root, config, ctx)
+
+    before = fr.file_hash(spec)
+    spec.write_text(spec.read_text(encoding="utf-8") + "追記\n", encoding="utf-8")
+
+    assert fr.file_hash(spec) != before
+
+
+# ---------------------------------------------------------------- 製造開始後の仕様不足
+
+
+def test_return_to_spec_stage_waits_for_reapproval(sandbox, monkeypatch):
+    """6. 製造中の仕様不足は RETURN(CP1) となり、人間の再承認まで進まないこと。"""
+    root, config, ctx = sandbox
+    approve_spec(root, config, ctx)
+
+    # G1 が「仕様が沈黙している」と判断して差し戻す
+    write_record(
+        root / ctx["feature_dir"] / "gates", "0002_x_g1.md",
+        verdict="RETURN", next_step="STOP", gate="G1", run_seq=2, return_to="CP1",
+    )
+
+    action = fr.resolve_action(root, config, ctx["feature_dir"])
+    assert (action.kind, action.stage) == ("run", "CP1")
+
+    # CP1 を再実行しても、承認欄が未チェックのうちは製造へ戻らない
+    fake = FakeAI(root, lambda info: {
+        "gate": info["stage"], "run_seq": info["run_seq"], "recorded_by": "reviewer",
+        "verdict": "PASS", "next_step": "GO", "spec_hash": info["spec_hash"],
+    })
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    fr.cmd_run(root, config, ctx, {}, once=True, dry_run=False)
+
+    after = fr.resolve_action(root, config, ctx["feature_dir"])
+    assert (after.kind, after.stage) == ("await_human", "CP1")
+
+
+def test_manufacturing_worker_cannot_touch_approved_spec(sandbox, monkeypatch):
+    """6'. 製造 Worker が承認済み仕様を書き換えたら、ガードが検出すること。"""
+    root, config, ctx = sandbox
+    approve_spec(root, config, ctx)
+
+    spec = fr.spec_path(root, config, ctx)
+
+    def rewrite_spec(root_, argv):
+        info = parse_instruction(argv[1])
+        if fr.WORKER_PROMPT in info["prompt"]:
+            spec.write_text("AIが勝手に補完した仕様\n", encoding="utf-8")
+        else:
+            record = root_ / info["Gate記録ファイル"]
+            record.parent.mkdir(parents=True, exist_ok=True)
+            record.write_text(
+                "---\ngate: G1\nrun_seq: 2\nverdict: PASS\nnext_step: GO\n"
+                f"guard_violations: {info['guard_violations']}\n---\n\n# Gate記録\n",
+                encoding="utf-8",
+            )
+        return 0
+
+    monkeypatch.setattr(fr, "run_ai", rewrite_spec)
+
+    fr.cmd_run(root, config, ctx, {}, once=True, dry_run=False)
+
+    # Reviewer へ違反として渡っている
+    front = latest_front(root, ctx)
+    assert "20_spec.md" in front["guard_violations"]
+
+
+# ---------------------------------------------------------------- BLOCKED からの再試行
+
+
+def blocked_record(root, feature_dir, name="0001_x_cp1.md", stage="CP1",
+                   reason="state_error", seq=1):
+    return write_record(
+        root / feature_dir / "gates", name,
+        verdict="BLOCKED", next_step="STOP", gate=stage, run_seq=seq,
+        recorded_by="runner", blocked_reason=reason,
+    )
+
+
+def test_blocked_still_stops_without_retry_flag(feature):
+    """1. 通常実行では、これまでどおり BLOCKED で停止すること。"""
+    root, feature_dir = feature
+    blocked_record(root, feature_dir)
+
+    action = fr.resolve_action(root, CONFIG, feature_dir)
+
+    assert action.kind == "stop"
+    assert action.note == "state_error"
+
+
+def test_normal_run_does_not_auto_resume_from_blocked(sandbox, monkeypatch):
+    """1'. --retry-blocked なしの実行が、BLOCKED を自動で無視しないこと。"""
+    root, config, ctx = sandbox
+    blocked_record(root, ctx["feature_dir"])
+
+    fake = FakeAI(root, lambda info: {})
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    code = fr.cmd_run(root, config, ctx, {}, once=False, dry_run=False)
+
+    assert code == 1
+    assert fake.calls == [], "BLOCKED のまま AI を起動してはいけない"
+    assert len(fr.list_records(root, ctx["feature_dir"])) == 1
+
+
+def test_resolve_retry_action_targets_blocked_stage(feature):
+    """2. 最新が BLOCKED なら、その stage の再試行を組み立てること。"""
+    root, feature_dir = feature
+    record = blocked_record(root, feature_dir, stage="CP1")
+
+    action = fr.resolve_retry_action(root, CONFIG, feature_dir)
+
+    assert action.kind == "retry"
+    assert action.stage == "CP1"
+    assert action.record == record
+    assert action.note == "state_error"
+
+
+def test_retry_blocked_reruns_worker_and_reviewer(sandbox, monkeypatch):
+    """2. --retry-blocked で Worker / Reviewer を再実行できること。"""
+    root, config, ctx = sandbox
+    blocked_record(root, ctx["feature_dir"], stage="CP1")
+
+    fake = FakeAI(root, lambda info: {
+        "gate": info["stage"], "run_seq": info["run_seq"], "recorded_by": "reviewer",
+        "verdict": "PASS", "next_step": "GO",
+        "triggered_by": info["triggered_by"],
+        "triggered_by_record": info["triggered_by_record"],
+    })
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    code = fr.cmd_run(root, config, ctx, {}, once=True, dry_run=False, retry_blocked=True)
+
+    assert code == 0
+    assert len(fake.worker_calls()) == 1
+    assert len(fake.reviewer_calls()) == 1
+    assert fake.worker_calls()[0]["stage"] == "CP1"
+    assert fake.worker_calls()[0]["mode"] == "create"
+
+
+def test_retry_preserves_original_blocked_record(sandbox, monkeypatch):
+    """3. 過去の BLOCKED記録が変更・削除されないこと。"""
+    root, config, ctx = sandbox
+    original = blocked_record(root, ctx["feature_dir"], stage="CP1")
+    before = original.read_text(encoding="utf-8")
+
+    fake = FakeAI(root, lambda info: {
+        "gate": info["stage"], "run_seq": info["run_seq"], "recorded_by": "reviewer",
+        "verdict": "PASS", "next_step": "GO",
+    })
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    fr.cmd_run(root, config, ctx, {}, once=True, dry_run=False, retry_blocked=True)
+
+    assert original.exists()
+    assert original.read_text(encoding="utf-8") == before
+    assert fr.read_front_matter(original)["verdict"] == "BLOCKED"
+
+
+def test_retry_creates_new_record_number(sandbox, monkeypatch):
+    """4. 再試行後は新しい Gate記録番号になること。"""
+    root, config, ctx = sandbox
+    original = blocked_record(root, ctx["feature_dir"], stage="CP1", seq=1)
+
+    fake = FakeAI(root, lambda info: {
+        "gate": info["stage"], "run_seq": info["run_seq"], "recorded_by": "reviewer",
+        "verdict": "PASS", "next_step": "GO",
+    })
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    fr.cmd_run(root, config, ctx, {}, once=True, dry_run=False, retry_blocked=True)
+
+    records = fr.list_records(root, ctx["feature_dir"])
+
+    assert len(records) == 2
+    assert records[0] == original
+    assert records[1].name.startswith("0002_")
+    assert records[1].name.endswith("_cp1.md")
+
+
+def test_retry_records_causality_to_blocked_record(sandbox, monkeypatch):
+    """5. 新しい記録から、再試行元の BLOCKED記録を追跡できること。"""
+    root, config, ctx = sandbox
+    original = blocked_record(root, ctx["feature_dir"], stage="CP1")
+
+    fake = FakeAI(root, lambda info: {
+        "gate": info["stage"], "run_seq": info["run_seq"], "recorded_by": "reviewer",
+        "verdict": "PASS", "next_step": "GO",
+        "triggered_by": info["triggered_by"],
+        "triggered_by_record": info["triggered_by_record"],
+    })
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    fr.cmd_run(root, config, ctx, {}, once=True, dry_run=False, retry_blocked=True)
+
+    front = latest_front(root, ctx)
+
+    assert front["triggered_by"] == "RETRY_BLOCKED"
+    assert Path(front["triggered_by_record"]).name == original.name
+
+
+def test_compute_causality_for_retry(feature):
+    root, feature_dir = feature
+    previous = blocked_record(root, feature_dir, stage="G1")
+
+    causality = fr.compute_causality(root, feature_dir, "G1", previous, "retry")
+
+    assert causality["triggered_by"] == "RETRY_BLOCKED"
+    assert causality["triggered_by_record"].endswith(previous.name)
+    assert causality["supersedes"] == ""
+
+
+@pytest.mark.parametrize("verdict", ["PASS", "RETURN", "IN_PROGRESS"])
+def test_retry_rejected_when_latest_is_not_blocked(feature, verdict):
+    """6. BLOCKED 以外の状態では、再試行せず安全に停止すること。"""
+    root, feature_dir = feature
+    write_record(root / feature_dir / "gates", "0001_x_g1.md",
+                 verdict=verdict, gate="G1", run_seq=1, return_to="CP1")
+
+    with pytest.raises(SystemExit) as error:
+        fr.resolve_retry_action(root, CONFIG, feature_dir)
+
+    assert "BLOCKED" in str(error.value)
+
+
+def test_retry_rejected_without_any_record(feature):
+    root, feature_dir = feature
+
+    with pytest.raises(SystemExit):
+        fr.resolve_retry_action(root, CONFIG, feature_dir)
+
+
+def test_retry_rejected_when_blocked_gate_is_invalid(feature):
+    root, feature_dir = feature
+    write_record(root / feature_dir / "gates", "0001_x_g9.md",
+                 verdict="BLOCKED", gate="G9", run_seq=1, blocked_reason="state_error")
+
+    with pytest.raises(SystemExit):
+        fr.resolve_retry_action(root, CONFIG, feature_dir)
+
+
+def test_retry_does_not_run_ai_when_rejected(sandbox, monkeypatch):
+    """6'. 誤操作時に AI を起動しないこと。"""
+    root, config, ctx = sandbox
+    write_record(root / ctx["feature_dir"] / "gates", "0001_x_cp1.md",
+                 verdict="PASS", gate="CP1", run_seq=1)
+
+    fake = FakeAI(root, lambda info: {})
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    with pytest.raises(SystemExit):
+        fr.cmd_run(root, config, ctx, {}, once=True, dry_run=False, retry_blocked=True)
+
+    assert fake.calls == []
+
+
+def test_retry_and_review_current_are_mutually_exclusive(sandbox):
+    root, config, ctx = sandbox
+
+    with pytest.raises(SystemExit):
+        fr.cmd_run(root, config, ctx, {}, once=False, dry_run=False,
+                   review_current="G2", retry_blocked=True)
+
+
+def test_retry_continues_into_normal_auto_mode(sandbox, monkeypatch):
+    """7. 再試行の後は、通常のオートモードへ戻ること。"""
+    root, config, ctx = sandbox
+    blocked_record(root, ctx["feature_dir"], stage="CP1")
+
+    fake = FakeAI(root, lambda info: {
+        "gate": info["stage"], "run_seq": info["run_seq"], "recorded_by": "reviewer",
+        "verdict": "PASS", "next_step": "GO",
+    })
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    fr.cmd_run(root, config, ctx, {}, once=True, dry_run=False, retry_blocked=True)
+
+    action = fr.resolve_action(root, config, ctx["feature_dir"])
+
+    # CP1 は Human Gate。再試行が PASS しても、仕様承認までは製造へ進まない
+    assert (action.kind, action.stage) == ("await_human", "CP1")
+
+
+def test_retry_does_not_pass_blocked_reason_as_human_note(sandbox, monkeypatch):
+    """blocked_reason を人間コメントとして Reviewer へ渡さないこと。"""
+    root, config, ctx = sandbox
+    blocked_record(root, ctx["feature_dir"], stage="CP1", reason="guard_violation")
+
+    fake = FakeAI(root, lambda info: {
+        "gate": info["stage"], "run_seq": info["run_seq"], "recorded_by": "reviewer",
+        "verdict": "PASS", "next_step": "GO",
+    })
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    fr.cmd_run(root, config, ctx, {}, once=True, dry_run=False, retry_blocked=True)
+
+    assert fake.reviewer_calls()[0]["human_note"] == ""
+
+
+def test_retry_dry_run_shows_worker_without_executing(sandbox, monkeypatch):
+    root, config, ctx = sandbox
+    blocked_record(root, ctx["feature_dir"], stage="CP1")
+
+    fake = FakeAI(root, lambda info: {})
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    code = fr.cmd_run(root, config, ctx, {}, once=True, dry_run=True, retry_blocked=True)
+
+    assert code == 0
+    assert fake.calls == []
+    assert len(fr.list_records(root, ctx["feature_dir"])) == 1
 
 
 def test_worker_receives_cheap_model_at_cp3(sandbox, monkeypatch):
@@ -914,8 +1522,8 @@ def test_worker_receives_cheap_model_at_cp3(sandbox, monkeypatch):
     root, config, ctx = sandbox
     gates = root / ctx["feature_dir"] / "gates"
 
-    path = write_record(gates, "0001_x_g2.md", verdict="PASS", gate="G2", run_seq=1)
-    path.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+    approve_spec(root, config, ctx)
+    write_record(gates, "0002_x_g2.md", verdict="PASS", gate="G2", run_seq=2)
 
     fake = FakeAI(root, lambda info: {
         "gate": info["stage"], "run_seq": info["run_seq"], "recorded_by": "reviewer",
@@ -941,7 +1549,7 @@ def test_resolve_model_treats_placeholder_as_unset():
 
 
 @pytest.mark.parametrize(
-    "key", ["approval_heading_cp1", "approval_heading_cp3", "human_note_heading"]
+    "key", ["approval_heading_g1", "approval_heading_cp3", "human_note_heading"]
 )
 def test_config_headings_exist_in_gate_record_template(key):
     """runner が読む見出しが、Gate記録テンプレートに存在すること。
@@ -957,6 +1565,31 @@ def test_config_headings_exist_in_gate_record_template(key):
     assert re.search(rf"^#{{2,3}}\s*{re.escape(heading)}\s*$", template, re.MULTILINE), (
         f"{key}={heading!r} が gate_record_template.md に見つかりません"
     )
+
+
+def test_current_workflow_docs_do_not_reference_removed_g0_stage():
+    """新境界の正本文書・プロンプトに旧G0 stageを残さないこと。"""
+    targets = [
+        REPO_ROOT / "prompts/run_stage.md",
+        REPO_ROOT / "prompts/review_stage.md",
+        REPO_ROOT / "docs/rules/project/70_feature_loop.md",
+        REPO_ROOT / "docs/templates/gate_record_template.md",
+        REPO_ROOT / "tools/README.md",
+    ]
+
+    for target in targets:
+        text = target.read_text(encoding="utf-8")
+        assert "G0" not in text, target
+        assert "_g0.md" not in text, target
+
+
+def test_cp1_review_does_not_require_downstream_coverage():
+    """CP1は設計前なのでreq_covered等を要求しないことを正本で固定する。"""
+    text = (REPO_ROOT / "prompts/review_stage.md").read_text(encoding="utf-8")
+
+    assert "`req_covered`: **空にする**" in text
+    assert "**CP1は下流カバレッジ判定の対象外**" in text
+    assert "G1は要求カバレッジ" in text
 
 
 def test_config_stages_have_role_and_scope_entries():
@@ -1169,7 +1802,7 @@ def test_runner_record_is_readable_as_next_state(feature):
     root, feature_dir = feature
     ctx = {"app": "demo_app", "feature": "demo", "feature_dir": feature_dir}
 
-    fr.write_runner_record(root, ctx, "CP1", "state_error", "状態を解決できません。", None)
+    fr.write_runner_record(root, ctx, "G1", "state_error", "状態を解決できません。", None)
 
     action = fr.resolve_action(root, CONFIG, feature_dir)
 
@@ -1179,7 +1812,7 @@ def test_runner_record_is_readable_as_next_state(feature):
 
 def test_invalid_verdict_becomes_error_action(feature):
     root, feature_dir = feature
-    write_record(root / feature_dir / "gates", "0001_x_g0.md", verdict="WEIRD", gate="G0")
+    write_record(root / feature_dir / "gates", "0001_x_cp1.md", verdict="WEIRD", gate="CP1")
 
     action = fr.resolve_action(root, CONFIG, feature_dir)
 
@@ -1199,7 +1832,7 @@ def test_missing_approval_heading_becomes_error_action(feature):
     root, feature_dir = feature
     write_record(root / feature_dir / "gates", "0003_x_g2.md", verdict="PASS", gate="G2")
 
-    broken = dict(CONFIG, human_gates="CP1, G2, CP3")  # approval_heading_g2 がない
+    broken = dict(CONFIG, human_gates="G1, G2, CP3")  # approval_heading_g2 がない
 
     action = fr.resolve_action(root, broken, feature_dir)
 
@@ -1246,3 +1879,32 @@ def test_g2_remains_ai_gate_by_default(feature):
     action = fr.resolve_action(root, CONFIG, feature_dir)
 
     assert (action.kind, action.stage) == ("run", "CP3")
+
+
+def test_status_reports_preflight_stop_when_approved_spec_changed(sandbox, capsys):
+    """--status は製造開始条件NGなのに run と表示しないこと。"""
+    root, config, ctx = sandbox
+    approve_spec(root, config, ctx)
+    spec = fr.spec_path(root, config, ctx)
+    spec.write_text(spec.read_text(encoding="utf-8") + "変更\n", encoding="utf-8")
+
+    code = fr.cmd_status(root, config, ctx)
+    out = capsys.readouterr().out
+
+    assert code == 0
+    assert "製造開始条件: 満たしていない" in out
+    assert "次の動作: Manufacturing Preflight で停止 (stage=G1)" in out
+    assert "次の動作: run (stage=G1)" not in out
+
+
+def test_status_reports_run_when_matching_spec_is_approved(sandbox, capsys):
+    """承認済み baseline と一致する場合は従来どおり次 stage を表示すること。"""
+    root, config, ctx = sandbox
+    approve_spec(root, config, ctx)
+
+    code = fr.cmd_status(root, config, ctx)
+    out = capsys.readouterr().out
+
+    assert code == 0
+    assert "製造開始条件: 満たしている" in out
+    assert "次の動作: run (stage=G1)" in out

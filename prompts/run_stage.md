@@ -38,7 +38,7 @@
 
 ## 利用者が指定する項目
 
-- stage: `G0` / `CP1` / `G2` / `CP3`
+- stage: `CP1` / `G1` / `G2` / `CP3`
 - mode: `create`（成果物を作成）／ `fix`（FINDING を修正）
 - 対象機能フォルダ: `docs/<command_or_app_name>/features/<feature_name>/`
 - コマンド/アプリ名: `<command_or_app_name>`
@@ -52,25 +52,44 @@
 
 ---
 
+## 人間側の仕様と、AI製造側の境界
+
+```text
+[人間側]  20_spec.md                      ← CP1 で人間が承認する baseline
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[AI製造側] 21_design.md / 22_flow.md 以降   ← 承認済み仕様を入力として生成する
+```
+
+- **`20_spec.md` は人間側の成果物です。** AIが作成を補助することはありますが、確定させるのは人間です
+- **`21_design.md` 以降は AI 製造側の成果物です。** 承認済みの `20_spec.md` を入力として生成します
+- **製造 stage（G1 / G2 / CP3）で仕様不足を見つけても、AIが補完してはいけません。** 下記「仕様不足を見つけた場合」に従ってください
+
 ## stage ごとの委譲先と対象
 
-| stage | 委譲する個別プロンプト | 作成・更新する成果物 |
-|---|---|---|
-| `G0` | `prompts/create_feature_spec.md` | `20_spec.md` |
-| `CP1` | `prompts/create_function_design.md`<br>`prompts/create_function_call_flow.md` | `21_design.md`、`22_flow.md` |
-| `G2` | `prompts/create_test_design.md`<br>`prompts/create_review_checklist.md` | `23_test_plan.md`、`24_review_checklist.md` |
-| `CP3` | `prompts/implement_feature.md` | 実装ファイル、テストファイル |
+| stage | 位置づけ | 委譲する個別プロンプト | 作成・更新する成果物 |
+|---|---|---|---|
+| `CP1` | **人間側の仕様工程** | `prompts/create_feature_spec.md` | `20_spec.md` |
+| `G1` | AI製造 | `prompts/create_function_design.md`<br>`prompts/create_function_call_flow.md` | `21_design.md`、`22_flow.md` |
+| `G2` | AI製造 | `prompts/create_test_design.md`<br>`prompts/create_review_checklist.md` | `23_test_plan.md`、`24_review_checklist.md` |
+| `CP3` | AI製造 | `prompts/implement_feature.md` | 実装ファイル、テストファイル |
 
 委譲先プロンプトの**作業手順・出力形式・確認観点・テンプレートに従ってください。** このプロンプトでは再定義しません。
 
-### G0 の特例
+### CP1（仕様工程）の特例
 
-`20_spec.md` が既に存在し、内容が十分な場合は**作り直さないでください。** 次だけを行います。
+CP1 は、人間が承認する仕様書を整える工程です。**AIが仕様を決める工程ではありません。**
+
+`20_spec.md` が既に存在する場合は**作り直さないでください。** 次だけを行います。
 
 - 必須要件に `REQ-001` 形式のIDが振られていなければ、IDを付与する
 - 業務意図を発明しないと確定できない箇所があれば、**補完せず**、作業報告へ「人間判断が必要な事項」として列挙する
 
-**要求そのものを、AIが発明して追加しないでください。**
+守ってください。
+
+- **要求そのものを、AIが発明して追加しないでください。**
+- 「一般的にはこうだから」「既存実装がこうだから」「この方が自然だから」という理由で要求を足さないでください
+- `mode: fix` や差し戻しによる再実行でも同じです。**指摘された不足を、AIが業務判断で埋めないでください。** 何が決まっていないかを明示して、人間へ返します
+- **人間が承認済みの `20_spec.md` を変更すると、その承認は無効になります。** 変更した場合は、その旨を作業報告へ明記してください（人間が再レビュー・再承認します）
 
 ---
 
@@ -80,10 +99,12 @@
 
 | stage | 変更してよいファイル |
 |---|---|
-| `G0` | `<対象機能フォルダ>/20_spec.md`、`<対象機能フォルダ>/tasks.md` |
-| `CP1` | `<対象機能フォルダ>/21_design.md`、`<対象機能フォルダ>/22_flow.md`、`<対象機能フォルダ>/tasks.md` |
+| `CP1` | `<対象機能フォルダ>/20_spec.md`、`<対象機能フォルダ>/tasks.md` |
+| `G1` | `<対象機能フォルダ>/21_design.md`、`<対象機能フォルダ>/22_flow.md`、`<対象機能フォルダ>/tasks.md` |
 | `G2` | `<対象機能フォルダ>/23_test_plan.md`、`<対象機能フォルダ>/24_review_checklist.md`、`<対象機能フォルダ>/tasks.md` |
 | `CP3` | 利用者が指定した実装ファイル、利用者が指定したテストファイル |
+
+**`20_spec.md` を変更できるのは CP1 の Worker だけです。** 製造 stage（G1 / G2 / CP3）からは触れません。
 
 `tasks.md` の更新は、現在地と次に確認することを短く書く場合に限ります。CP3 では `tasks.md` を直接更新せず、作業報告へ「tasks.md 更新候補」として記載してください（`docs/rules/project/50_ai_permissions.md`）。
 
@@ -93,12 +114,32 @@
 
 | stage | 変更してはいけない（baseline 化済み） |
 |---|---|
-| `G0` | — |
-| `CP1` | `20_spec.md` |
-| `G2` | `20_spec.md`、`21_design.md`、`22_flow.md` |
-| `CP3` | `20_spec.md`、`21_design.md`、`22_flow.md`、`23_test_plan.md`、`24_review_checklist.md` |
+| `CP1` | — |
+| `G1` | **`20_spec.md`（人間が承認した仕様 baseline）** |
+| `G2` | 上記 ＋ `21_design.md`、`22_flow.md` |
+| `CP3` | 上記 ＋ `23_test_plan.md`、`24_review_checklist.md` |
 
 **baseline の変更が必要だと判断した場合は、変更せずに停止してください。** 作業報告へ、どの成果物のどの記述を変更する必要があるかを記載します。Reviewer が `RETURN` を判定します。
+
+### 仕様不足を見つけた場合
+
+製造 stage で「承認済みの `20_spec.md` だけでは判断できない」と分かった場合、**AIが仕様を補完してはいけません。**
+
+次を禁止します。
+
+- 「一般的にはこうだから」と仕様を決める
+- 「既存実装がこうだから」と仕様を決める
+- 「この方が自然だから」と仕様を決める
+- コード上で都合のよい既定値・既定動作を追加する
+- テストの期待値を、決まっていない仕様の代わりにする
+
+**変更せずに停止し、作業報告へ次を記載してください。**
+
+- どの処理・どのテストで判断できなくなったか
+- `20_spec.md` の何が決まっていないか
+- 決めるために必要な情報は何か（業務意図か、既存資料か）
+
+Reviewer が、不足の種類に応じて `RETURN(CP1)`（仕様工程へ戻す）または `BLOCKED` を判定します。
 
 ## 変更してはいけないファイル
 

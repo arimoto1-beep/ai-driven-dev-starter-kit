@@ -232,6 +232,11 @@ def is_approved(record: Path, heading: str) -> bool:
     return bool(boxes) and all(box.lower() == "x" for box in boxes)
 
 
+def file_hash(path: Path) -> str:
+    """ファイル内容の SHA-256。仕様 baseline の同一性判定に使う。"""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def read_human_note(record: Path, heading: str) -> str:
     """「気になる点」のフェンス内の自然文を返す。"""
     if not heading:
@@ -321,6 +326,114 @@ def check_guard(changed: list[str], allowed: list[str]) -> list[str]:
     return [path for path in changed if not is_allowed(path, allowed)]
 
 
+# ---------------------------------------------------------------- 仕様 baseline
+
+
+def spec_stage(config: dict[str, str]) -> str:
+    return config.get("spec_stage", "")
+
+
+def spec_path(root: Path, config: dict[str, str], ctx: dict[str, str]) -> Path | None:
+    patterns = expand(config.get("spec_artifact", ""), ctx)
+    return root / patterns[0] if patterns else None
+
+
+def is_manufacturing_stage(config: dict[str, str], stage: str) -> bool:
+    """仕様 stage より後の stage は、すべて製造 stage。"""
+    stages = split_list(config.get("stages", ""))
+    target = spec_stage(config)
+
+    if not target or target not in stages or stage not in stages:
+        return False
+
+    return stages.index(stage) > stages.index(target)
+
+
+def find_spec_approval(root: Path, config: dict[str, str],
+                       feature_dir: str,
+                       required_spec_hash: str | None = None,
+                       ) -> tuple[Path | None, dict[str, str]]:
+    """人間が承認済みの仕様 stage 記録を、新しい順に探す。
+
+    ``required_spec_hash`` が指定された場合は、その baseline と一致する承認だけを
+    対象にする。承認は「どの 20_spec.md を承認したか」を表すため、最新の記録で
+    ある必要はない。内容が一致する承認が1件あればよい。
+    """
+    stage = spec_stage(config)
+    heading = config.get(f"approval_heading_{stage.lower()}", "")
+
+    if not stage or not heading:
+        return None, {}
+
+    for path in reversed(list_records(root, feature_dir)):
+        front = read_front_matter(path)
+
+        if front.get("gate") != stage or front.get("verdict") != "PASS":
+            continue
+
+        if not is_approved(path, heading):
+            continue
+
+        if required_spec_hash is not None and front.get("spec_hash", "") != required_spec_hash:
+            continue
+
+        return path, front
+
+    return None, {}
+
+
+def check_spec_baseline(root: Path, config: dict[str, str],
+                        ctx: dict[str, str]) -> tuple[bool, str]:
+    """製造開始条件（Manufacturing Preflight）を確認する。
+
+    - 仕様レビューが PASS していること
+    - 人間の仕様承認があること
+    - 承認対象の 20_spec.md と現在の 20_spec.md が同一 baseline であること
+    """
+    target = spec_path(root, config, ctx)
+
+    if target is None:
+        return False, "設定に spec_artifact がありません。"
+
+    if not target.exists():
+        return False, f"仕様書が見つかりません: {rel(root, target)}"
+
+    current = file_hash(target)
+    record, _ = find_spec_approval(
+        root, config, ctx["feature_dir"], required_spec_hash=current,
+    )
+
+    if record is not None:
+        return True, ""
+
+    # 一致する承認が無い場合だけ、最新の承認済み記録を診断用に確認する。
+    # これにより A承認 → B承認 → Aへ戻す、のような場合でも過去のA承認を
+    # 正しく利用できる一方、現在の baseline が未承認なら安全側に停止できる。
+    latest_approval, front = find_spec_approval(root, config, ctx["feature_dir"])
+
+    if latest_approval is None:
+        return False, (
+            f"{spec_stage(config)} の人間による仕様承認がありません。\n"
+            "仕様をレビューし、Gate記録の承認欄にチェックを入れてから製造を開始してください。"
+        )
+
+    approved = front.get("spec_hash", "")
+
+    if not approved:
+        return False, (
+            f"承認記録に spec_hash がありません: {rel(root, latest_approval)}\n"
+            "仕様レビューを実行し直して、承認し直してください。"
+        )
+
+    return False, (
+        "現在の仕様書に一致する人間承認済み baseline がありません。\n"
+        f"  最新の承認記録: {rel(root, latest_approval)}\n"
+        f"  承認時: {approved[:12]}\n"
+        f"  現在  : {current[:12]}\n"
+        "現在の仕様をレビューし、承認してから製造を開始してください。"
+    )
+
+
 # ---------------------------------------------------------------- 状態解決
 
 
@@ -330,12 +443,16 @@ class Action:
     kind:
       run          Worker → Reviewer を1往復する
       fix          Worker(mode=fix) → Reviewer を1往復する
+      retry        BLOCKED からの明示的な再試行。Worker → Reviewer を1往復する
       review_note  Worker を動かさず、人間コメントつきで Reviewer だけ起動する
       review_only  Worker を動かさず、現在の成果物を Reviewer だけで見直す
       await_human  人間の承認待ちで停止する
       done         完了
-      stop         Reviewer が BLOCKED を記録済み。報告して停止する
+      stop         BLOCKED が記録済み。報告して停止する（--retry-blocked で再試行）
       error        runner が継続を禁止した。BLOCKED記録を新規作成して停止する
+
+    `retry` は resolve_action からは返らない。人間が --retry-blocked を
+    明示したときだけ resolve_retry_action が組み立てる。
     """
 
     def __init__(self, kind: str, stage: str = "", record: Path | None = None, note: str = ""):
@@ -504,12 +621,14 @@ def build_reviewer_instruction(stage: str, ctx: dict[str, str], record: Path,
                                root: Path, seq: int, causality: dict[str, str],
                                violations: list[str], human_note: str,
                                config: dict[str, str], model_class: str,
-                               human_gate: bool, mode: str) -> str:
+                               human_gate: bool, mode: str,
+                               spec_hash: str = "") -> str:
     lines = [
         f"{REVIEWER_PROMPT} を参照してください。",
         "",
         f"stage: {stage}",
         f"mode: {mode}",
+        f"spec_hash: {spec_hash}",
         f"対象機能フォルダ: {ctx['feature_dir']}/",
         f"コマンド/アプリ名: {ctx['app']}",
         f"対象機能名: {ctx['feature']}",
@@ -589,6 +708,7 @@ def cmd_status(root: Path, config: dict[str, str], ctx: dict[str, str]) -> int:
     feature_dir = ctx["feature_dir"]
     action = resolve_action(root, config, feature_dir)
     record = latest_record(root, feature_dir)
+    spec_preflight_ok: bool | None = None
 
     show(f"feature: {ctx['app']}/{ctx['feature']}")
     show(f"記録数: {len(list_records(root, feature_dir))}")
@@ -600,10 +720,53 @@ def cmd_status(root: Path, config: dict[str, str], ctx: dict[str, str]) -> int:
         show(summarize(root, record))
 
     show()
-    show(f"次の動作: {action.kind}" + (f" (stage={action.stage})" if action.stage else ""))
+    show("仕様 baseline:")
+
+    target = spec_path(root, config, ctx)
+
+    if target is None or not target.exists():
+        show(f"  仕様書なし（{rel(root, target) if target else 'spec_artifact 未設定'}）")
+    else:
+        current = file_hash(target)
+        approved_record, _ = find_spec_approval(
+            root, config, feature_dir, required_spec_hash=current,
+        )
+        if approved_record is None:
+            approved_record, _ = find_spec_approval(root, config, feature_dir)
+        ok, detail = check_spec_baseline(root, config, ctx)
+        spec_preflight_ok = ok
+
+        show(f"  仕様書: {rel(root, target)}（{current[:12]}...）")
+        show(f"  人間の仕様承認: {rel(root, approved_record) if approved_record else 'なし'}")
+        show(f"  製造開始条件: {'満たしている' if ok else '満たしていない'}")
+
+        if not ok:
+            for line in detail.splitlines():
+                show(f"    {line}")
+
+    show()
+    if (
+        action.kind == "run"
+        and action.stage
+        and is_manufacturing_stage(config, action.stage)
+        and spec_preflight_ok is False
+    ):
+        show(f"次の動作: Manufacturing Preflight で停止 (stage={action.stage})")
+    else:
+        show(f"次の動作: {action.kind}" + (f" (stage={action.stage})" if action.stage else ""))
 
     if action.note:
         show(f"理由: {action.note}")
+
+    if action.kind == "stop":
+        show()
+        show("BLOCKED は自動では再開しません。"
+             "原因を解消したうえで --retry-blocked を明示してください。")
+
+    if action.kind == "await_human" and action.stage == spec_stage(config):
+        show()
+        show("仕様承認待ちです。Gate記録の承認欄にチェックを入れると製造へ進みます。")
+        show("仕様を修正した場合は、--spec-review で再レビューしてから承認してください。")
 
     return 0
 
@@ -632,6 +795,10 @@ def cmd_history(root: Path, ctx: dict[str, str]) -> int:
             line += f" ({front.get('blocked_reason', '')})"
 
         show(line)
+
+        spec = front.get("spec_hash", "")
+        if spec:
+            show(f"          spec {spec[:12]}...")
 
         triggered = front.get("triggered_by_record", "")
         if triggered:
@@ -683,6 +850,13 @@ def compute_causality(root: Path, feature_dir: str, stage: str,
             "triggered_by": "MANUAL",
             "triggered_by_record": "",
             "supersedes": last_record_of_stage(root, feature_dir, stage),
+        }
+
+    if kind == "retry":
+        return {
+            "triggered_by": "RETRY_BLOCKED",
+            "triggered_by_record": rel(root, previous),
+            "supersedes": "",
         }
 
     if read_front_matter(previous).get("verdict") == "RETURN":
@@ -849,6 +1023,21 @@ def run_worker(root: Path, config: dict[str, str], ctx: dict[str, str], stage: s
     return True, violations
 
 
+def current_spec_hash(root: Path, config: dict[str, str], ctx: dict[str, str],
+                      stage: str) -> str:
+    """仕様 stage のときだけ、現在の仕様書のハッシュを返す。
+
+    ハッシュは runner が計算する。Reviewer は転記するだけで、
+    製造開始時に runner が再計算して照合する（AIの計算に依存しない）。
+    """
+    if stage != spec_stage(config):
+        return ""
+
+    target = spec_path(root, config, ctx)
+
+    return file_hash(target) if target and target.exists() else ""
+
+
 def run_reviewer(root: Path, config: dict[str, str], ctx: dict[str, str], stage: str,
                  record: Path, seq: int, causality: dict[str, str], setup: dict,
                  violations: list[str], human_note: str,
@@ -859,6 +1048,7 @@ def run_reviewer(root: Path, config: dict[str, str], ctx: dict[str, str], stage:
     instruction = build_reviewer_instruction(
         stage, ctx, record, root, seq, causality, violations, human_note,
         config, setup["reviewer_class"], setup["human_gate"], review_mode,
+        current_spec_hash(root, config, ctx, stage),
     )
     argv = build_argv(config, instruction, setup["reviewer_model"])
 
@@ -887,7 +1077,7 @@ def show_dry_run(root: Path, config: dict[str, str], ctx: dict[str, str], stage:
                  causality: dict[str, str], human_note: str) -> None:
     show(f"--- dry-run: stage={stage} kind={kind} mode={mode}")
 
-    if kind in ("run", "fix"):
+    if kind in ("run", "fix", "retry"):
         instruction = build_worker_instruction(
             stage, mode, ctx, setup["worker_allowed"],
             record if mode == "fix" else None, root, config, setup["worker_class"],
@@ -914,6 +1104,10 @@ def show_dry_run(root: Path, config: dict[str, str], ctx: dict[str, str], stage:
          f"supersedes={causality['supersedes']}")
     show(f"  human_note: {human_note or '(なし)'}")
 
+    spec = current_spec_hash(root, config, ctx, stage)
+    if spec:
+        show(f"  spec_hash: {spec[:12]}...")
+
 
 def execute(root: Path, config: dict[str, str], ctx: dict[str, str],
             action: Action, overrides: dict[str, str], dry_run: bool) -> Path | None:
@@ -921,7 +1115,7 @@ def execute(root: Path, config: dict[str, str], ctx: dict[str, str],
     stage = action.stage
     setup = stage_setup(config, ctx, stage, overrides)
 
-    with_worker = action.kind in ("run", "fix")
+    with_worker = action.kind in ("run", "fix", "retry")
     mode = "fix" if action.kind == "fix" else "create"
 
     if action.kind == "fix":
@@ -935,7 +1129,9 @@ def execute(root: Path, config: dict[str, str], ctx: dict[str, str],
         causality = compute_causality(
             root, ctx["feature_dir"], stage, action.record, action.kind
         )
-        human_note = action.note
+        # note を人間コメントとして扱うのは review_note だけ。
+        # retry では note が blocked_reason（表示用）なので Reviewer へ渡さない。
+        human_note = action.note if action.kind == "review_note" else ""
 
     if dry_run:
         show_dry_run(root, config, ctx, stage, action.kind, mode, setup,
@@ -1006,14 +1202,76 @@ def halt(root: Path, ctx: dict[str, str], stage: str, reason: str, detail: str,
     return 1
 
 
+def resolve_retry_action(root: Path, config: dict[str, str], feature_dir: str) -> Action:
+    """BLOCKED からの明示的な再試行を組み立てる。
+
+    最新の Gate記録が BLOCKED のときだけ受け付ける。
+    過去の BLOCKED記録は削除も上書きもしない。
+    """
+    record = latest_record(root, feature_dir)
+
+    if record is None:
+        raise SystemExit(
+            "Gate記録がありません。--retry-blocked は BLOCKED記録がある場合だけ使えます。"
+        )
+
+    front = read_front_matter(record)
+    verdict = front.get("verdict", "")
+
+    if verdict != "BLOCKED":
+        raise SystemExit(
+            f"最新の Gate記録は BLOCKED ではありません（verdict: {verdict or '不明'}）。\n"
+            "--retry-blocked は BLOCKED からの復旧専用です。"
+            "通常の実行は --retry-blocked なしで行ってください。"
+        )
+
+    stage = front.get("gate", "")
+
+    if stage not in split_list(config.get("stages", "")):
+        raise SystemExit(f"BLOCKED記録の gate が不正です: {stage!r}")
+
+    return Action("retry", stage, record, front.get("blocked_reason", ""))
+
+
 def cmd_run(root: Path, config: dict[str, str], ctx: dict[str, str],
             overrides: dict[str, str], once: bool, dry_run: bool,
-            review_current: str = "") -> int:
+            review_current: str = "", retry_blocked: bool = False,
+            spec_review: bool = False) -> int:
     feature_dir = ctx["feature_dir"]
     stages = split_list(config.get("stages", ""))
     max_rounds = int(config.get("max_rounds", "3"))
     max_returns = int(config.get("max_returns_per_gate", "3"))
     fix_rounds = 0
+
+    exclusive = [
+        name for name, value in (
+            ("--review-current", bool(review_current)),
+            ("--retry-blocked", retry_blocked),
+            ("--spec-review", spec_review),
+        ) if value
+    ]
+
+    if len(exclusive) > 1:
+        raise SystemExit(f"{' と '.join(exclusive)} は同時に指定できません。")
+
+    # --- 仕様レビューの単独実行：製造 runner とは独立して何度でも回せる
+    if spec_review:
+        stage = spec_stage(config)
+
+        if stage not in stages:
+            raise SystemExit(f"設定の spec_stage が不正です: {stage!r}")
+
+        target = spec_path(root, config, ctx)
+
+        if target is None or not target.exists():
+            raise SystemExit(
+                f"仕様書がありません: {rel(root, target) if target else '(spec_artifact 未設定)'}\n"
+                "仕様レビューは、既存の仕様書に対して行います。"
+            )
+
+        show(f"仕様レビュー（単独実行）: {rel(root, target)}")
+        show(f"  spec_hash: {file_hash(target)[:12]}...")
+        review_current = stage
 
     # --- マニュアル介入からの復帰：Worker を動かさず Reviewer だけを起動する
     if review_current:
@@ -1030,8 +1288,18 @@ def cmd_run(root: Path, config: dict[str, str], ctx: dict[str, str],
 
         return 0 if record is not None else 1
 
+    pending_retry = retry_blocked
+
     while True:
-        action = resolve_action(root, config, feature_dir)
+        if pending_retry:
+            action = resolve_retry_action(root, config, feature_dir)
+            pending_retry = False
+
+            show(f"BLOCKED からの再試行: {action.stage}"
+                 f"（blocked_reason: {action.note or '不明'}）")
+            show(f"  元の記録: {rel(root, action.record)}（変更せず履歴として残します）")
+        else:
+            action = resolve_action(root, config, feature_dir)
 
         if action.kind == "done":
             show("完了しました。")
@@ -1050,6 +1318,11 @@ def cmd_run(root: Path, config: dict[str, str], ctx: dict[str, str],
             show(f"{action.stage} で停止しています: {action.note}")
             if action.record is not None:
                 show(summarize(root, action.record))
+            show()
+            show("BLOCKED は自動では再開しません。")
+            show("原因を解消したうえで、--retry-blocked を明示して再試行してください。")
+            show(f"  python tools/feature_runner.py --feature "
+                 f"{ctx['app']}/{ctx['feature']} --retry-blocked")
             return 1
 
         if action.kind == "error":
@@ -1068,13 +1341,29 @@ def cmd_run(root: Path, config: dict[str, str], ctx: dict[str, str],
                     f"収束ループが上限に達しました（max_rounds={max_rounds}）。",
                     action.record,
                 )
-        elif action.kind == "run":
+        elif action.kind in ("run", "retry"):
             fix_rounds = 0
-            if count_returns_to(root, feature_dir, action.stage) >= max_returns:
+            if (action.kind == "run"
+                    and count_returns_to(root, feature_dir, action.stage) >= max_returns):
                 return halt(
                     root, ctx, action.stage, "non_convergence",
                     f"{action.stage} への差し戻しが上限に達しました"
                     f"（max_returns_per_gate={max_returns}）。",
+                    action.record,
+                )
+
+        # --- Manufacturing Preflight
+        # 製造 stage で Worker を動かす前に、承認済み仕様 baseline を確認する。
+        # Reviewer だけの動作（review_only / review_note）は読み取りのため対象外。
+        if (action.kind in ("run", "fix", "retry")
+                and is_manufacturing_stage(config, action.stage)):
+            ok, detail = check_spec_baseline(root, config, ctx)
+
+            if not ok:
+                show(f"製造を開始できません（{action.stage} の手前で停止）。")
+                return halt(
+                    root, ctx, spec_stage(config), "spec_not_approved",
+                    f"Manufacturing Preflight に失敗しました。\n{detail}",
                     action.record,
                 )
 
@@ -1127,6 +1416,18 @@ def main() -> None:
         help="Worker を起動せず、現在の成果物をそのまま Reviewer に見直させる"
         "（マニュアル介入からの復帰）",
     )
+    parser.add_argument(
+        "--retry-blocked",
+        action="store_true",
+        help="最新 Gate が BLOCKED のとき、その stage を明示的に再試行する"
+        "（BLOCKED からの復旧。過去の記録は残す）",
+    )
+    parser.add_argument(
+        "--spec-review",
+        action="store_true",
+        help="仕様書（20_spec.md）のAIレビューだけを単独実行する。"
+        "製造は開始しない。何度でも実行できる",
+    )
     parser.add_argument("--role-design", help="design のモデルクラスを上書きする")
     parser.add_argument("--role-build", help="build のモデルクラスを上書きする")
     parser.add_argument("--role-review", help="review のモデルクラスを上書きする")
@@ -1156,7 +1457,7 @@ def main() -> None:
     raise SystemExit(
         cmd_run(
             root, config, ctx, overrides, args.once, args.dry_run,
-            args.review_current or "",
+            args.review_current or "", args.retry_blocked, args.spec_review,
         )
     )
 
