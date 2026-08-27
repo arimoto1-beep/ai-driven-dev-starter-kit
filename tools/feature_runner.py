@@ -434,6 +434,172 @@ def check_spec_baseline(root: Path, config: dict[str, str],
     )
 
 
+# ---------------------------------------------------------------- stage 成果物の baseline
+
+
+def stage_artifacts(config: dict[str, str], stage: str, ctx: dict[str, str]) -> list[str]:
+    """その stage が baseline 化する成果物のパターン。"""
+    return expand(config.get(f"stage_{stage.lower()}_artifacts", ""), ctx)
+
+
+def hash_paths(root: Path, patterns: list[str]) -> str:
+    """複数ファイルをまとめた内容ハッシュ。
+
+    パス名も混ぜるため、内容の変更だけでなく追加・削除・改名も検出できる。
+    ディレクトリ指定は git が見ているファイルだけを対象にする
+    （`__pycache__` のような無視対象を数えない）。
+    """
+    if not patterns:
+        return ""
+
+    names = {name for name in git_files(root) if is_allowed(name, patterns)}
+
+    # 作成直後で git がまだ見ていない明示指定ファイルも拾う
+    names.update(
+        pattern for pattern in patterns
+        if not pattern.endswith("/") and (root / pattern).is_file()
+    )
+
+    digest = hashlib.sha256()
+
+    for name in sorted(names):
+        digest.update(name.encode("utf-8") + b"\0")
+
+        try:
+            digest.update((root / name).read_bytes())
+        except OSError:
+            digest.update(b"<unreadable>")
+
+        digest.update(b"\0")
+
+    return digest.hexdigest()
+
+
+def current_artifacts_hash(root: Path, config: dict[str, str], ctx: dict[str, str],
+                           stage: str) -> str:
+    """その stage の成果物の、現在の内容ハッシュ。
+
+    `spec_hash` と同じ考え方で、runner が計算して Reviewer へ渡し、
+    runner が後で再計算して照合する。AIの計算には依存しない。
+    """
+    return hash_paths(root, stage_artifacts(config, stage, ctx))
+
+
+def latest_pass_of_stage(root: Path, feature_dir: str, stage: str) -> Path | None:
+    for path in reversed(list_records(root, feature_dir)):
+        front = read_front_matter(path)
+        if front.get("gate") == stage and front.get("verdict") == "PASS":
+            return path
+
+    return None
+
+
+def stage_baseline_state(root: Path, config: dict[str, str], ctx: dict[str, str],
+                         stage: str) -> str:
+    """その stage の成果物が、PASS 当時から変わっていないか。
+
+    戻り値:
+      no_pass  まだ PASS 記録がない
+      unknown  判定材料がない（設定なし、または記録に artifacts_hash がない）
+      match    PASS 当時と同じ
+      changed  PASS 後に変更されている
+    """
+    if not stage_artifacts(config, stage, ctx):
+        return "unknown"
+
+    record = latest_pass_of_stage(root, ctx["feature_dir"], stage)
+
+    if record is None:
+        return "no_pass"
+
+    recorded = read_front_matter(record).get("artifacts_hash", "")
+
+    # artifacts_hash を持たない過去の記録は判定できない。安全側に倒すと
+    # 既存 feature がすべて停止するため、判定不能として扱い停止しない。
+    if not recorded:
+        return "unknown"
+
+    return "match" if recorded == current_artifacts_hash(root, config, ctx, stage) else "changed"
+
+
+def spec_baseline_changed(root: Path, config: dict[str, str], ctx: dict[str, str]) -> bool:
+    """人間が承認した仕様が、承認後に変更されているか。
+
+    仕様 stage だけは `artifacts_hash` ではなく既存の spec 承認で判定する。
+    baseline を成立させるのは Gate の PASS ではなく人間の承認だからである。
+    まだ一度も承認されていない feature は対象外（通常フローの範囲）。
+    """
+    approval, _ = find_spec_approval(root, config, ctx["feature_dir"])
+
+    if approval is None:
+        return False
+
+    ok, _ = check_spec_baseline(root, config, ctx)
+
+    return not ok
+
+
+def stale_stages(root: Path, config: dict[str, str], ctx: dict[str, str],
+                 before: str = "") -> list[str]:
+    """通過後に成果物が変更された stage を、stages 順で返す。
+
+    先頭が最も上流の変更点であり、そこから下流はすべて再確認が必要になる。
+
+    ``before`` を指定すると、その stage より前（= 上流）だけを見る。
+    「stage X を実行してよいか」は、X が依存する上流だけで決まるためである。
+    """
+    stages = split_list(config.get("stages", ""))
+
+    if before and before in stages:
+        stages = stages[: stages.index(before)]
+
+    stale = []
+
+    for stage in stages:
+        if stage == spec_stage(config):
+            if spec_baseline_changed(root, config, ctx):
+                stale.append(stage)
+        elif stage_baseline_state(root, config, ctx, stage) == "changed":
+            stale.append(stage)
+
+    return stale
+
+
+def describe_stale(config: dict[str, str], stale: list[str]) -> list[str]:
+    """stale 検出時に人間へ出す案内。runner は自動で再開しない。"""
+    stages = split_list(config.get("stages", ""))
+    head = stale[0]
+    downstream = stages[stages.index(head) + 1:] if head in stages else []
+
+    lines = [
+        "通過済み stage の成果物が、その stage の判定後に変更されています。",
+        f"  変更が検出された stage: {', '.join(stale)}",
+    ]
+
+    if downstream:
+        lines.append(f"  再確認が必要な下流 stage: {', '.join(downstream)}")
+
+    lines += [
+        "",
+        "古い判定を完成扱いにしないため、ここで停止します。",
+        "どちらで再開するかは人間が決めてください。",
+    ]
+
+    if head == spec_stage(config):
+        # 仕様 stage は再レビューのあと、人間の再承認が必要になる
+        lines += [
+            "  仕様を人間が直した場合     : --spec-review（そのあと人間が承認し直す）",
+            f"  AIに作り直させる場合       : --rework {head}",
+        ]
+    else:
+        lines += [
+            f"  成果物を人間が直した場合   : --review-current {head}",
+            f"  AIに作り直させる場合       : --rework {head}",
+        ]
+
+    return lines
+
+
 # ---------------------------------------------------------------- 状態解決
 
 
@@ -444,6 +610,7 @@ class Action:
       run          Worker → Reviewer を1往復する
       fix          Worker(mode=fix) → Reviewer を1往復する
       retry        BLOCKED からの明示的な再試行。Worker → Reviewer を1往復する
+      rework       通過済み stage の明示的なやり直し。Worker → Reviewer を1往復する
       review_note  Worker を動かさず、人間コメントつきで Reviewer だけ起動する
       review_only  Worker を動かさず、現在の成果物を Reviewer だけで見直す
       await_human  人間の承認待ちで停止する
@@ -622,13 +789,15 @@ def build_reviewer_instruction(stage: str, ctx: dict[str, str], record: Path,
                                violations: list[str], human_note: str,
                                config: dict[str, str], model_class: str,
                                human_gate: bool, mode: str,
-                               spec_hash: str = "") -> str:
+                               spec_hash: str = "",
+                               artifacts_hash: str = "") -> str:
     lines = [
         f"{REVIEWER_PROMPT} を参照してください。",
         "",
         f"stage: {stage}",
         f"mode: {mode}",
         f"spec_hash: {spec_hash}",
+        f"artifacts_hash: {artifacts_hash}",
         f"対象機能フォルダ: {ctx['feature_dir']}/",
         f"コマンド/アプリ名: {ctx['app']}",
         f"対象機能名: {ctx['feature']}",
@@ -745,13 +914,39 @@ def cmd_status(root: Path, config: dict[str, str], ctx: dict[str, str]) -> int:
                 show(f"    {line}")
 
     show()
+    show("stage 成果物の baseline:")
+
+    labels = {
+        "match": "通過時と同じ",
+        "changed": "**通過後に変更あり**",
+        "no_pass": "まだ PASS 記録がない",
+        "unknown": "判定不能（記録に artifacts_hash がない、または未設定）",
+    }
+
+    for stage in split_list(config.get("stages", "")):
+        if stage == spec_stage(config):
+            # 仕様 stage は人間の承認が baseline を決めるため、上の仕様 baseline で判定する
+            show(f"  {stage:<4} 上記の仕様 baseline で判定")
+            continue
+
+        state = stage_baseline_state(root, config, ctx, stage)
+        show(f"  {stage:<4} {labels[state]}")
+
+    stale = stale_stages(root, config, ctx)
+
+    show()
     if (
         action.kind == "run"
         and action.stage
         and is_manufacturing_stage(config, action.stage)
         and spec_preflight_ok is False
     ):
+        # 製造の手前で止まる場合は、既存の Manufacturing Preflight の説明を優先する
         show(f"次の動作: Manufacturing Preflight で停止 (stage={action.stage})")
+    elif stale:
+        show(f"次の動作: 通過済み成果物の変更を検出したため停止 ({', '.join(stale)})")
+        for line in describe_stale(config, stale)[1:]:
+            show(line)
     else:
         show(f"次の動作: {action.kind}" + (f" (stage={action.stage})" if action.stage else ""))
 
@@ -857,6 +1052,13 @@ def compute_causality(root: Path, feature_dir: str, stage: str,
             "triggered_by": "RETRY_BLOCKED",
             "triggered_by_record": rel(root, previous),
             "supersedes": "",
+        }
+
+    if kind == "rework":
+        return {
+            "triggered_by": "REWORK",
+            "triggered_by_record": "",
+            "supersedes": last_record_of_stage(root, feature_dir, stage),
         }
 
     if read_front_matter(previous).get("verdict") == "RETURN":
@@ -1049,6 +1251,7 @@ def run_reviewer(root: Path, config: dict[str, str], ctx: dict[str, str], stage:
         stage, ctx, record, root, seq, causality, violations, human_note,
         config, setup["reviewer_class"], setup["human_gate"], review_mode,
         current_spec_hash(root, config, ctx, stage),
+        current_artifacts_hash(root, config, ctx, stage),
     )
     argv = build_argv(config, instruction, setup["reviewer_model"])
 
@@ -1077,7 +1280,7 @@ def show_dry_run(root: Path, config: dict[str, str], ctx: dict[str, str], stage:
                  causality: dict[str, str], human_note: str) -> None:
     show(f"--- dry-run: stage={stage} kind={kind} mode={mode}")
 
-    if kind in ("run", "fix", "retry"):
+    if kind in ("run", "fix", "retry", "rework"):
         instruction = build_worker_instruction(
             stage, mode, ctx, setup["worker_allowed"],
             record if mode == "fix" else None, root, config, setup["worker_class"],
@@ -1108,6 +1311,10 @@ def show_dry_run(root: Path, config: dict[str, str], ctx: dict[str, str], stage:
     if spec:
         show(f"  spec_hash: {spec[:12]}...")
 
+    artifacts = current_artifacts_hash(root, config, ctx, stage)
+    if artifacts:
+        show(f"  artifacts_hash: {artifacts[:12]}...")
+
 
 def execute(root: Path, config: dict[str, str], ctx: dict[str, str],
             action: Action, overrides: dict[str, str], dry_run: bool) -> Path | None:
@@ -1115,7 +1322,7 @@ def execute(root: Path, config: dict[str, str], ctx: dict[str, str],
     stage = action.stage
     setup = stage_setup(config, ctx, stage, overrides)
 
-    with_worker = action.kind in ("run", "fix", "retry")
+    with_worker = action.kind in ("run", "fix", "retry", "rework")
     mode = "fix" if action.kind == "fix" else "create"
 
     if action.kind == "fix":
@@ -1194,9 +1401,19 @@ def execute(root: Path, config: dict[str, str], ctx: dict[str, str],
 
 
 def halt(root: Path, ctx: dict[str, str], stage: str, reason: str, detail: str,
-         previous: Path | None, violations: list[str] | None = None) -> int:
-    """runner が継続を禁止する。正式な BLOCKED記録を残してから停止する。"""
+         previous: Path | None, violations: list[str] | None = None,
+         dry_run: bool = False) -> int:
+    """runner が継続を禁止する。正式な BLOCKED記録を残してから停止する。
+
+    `--dry-run` は「実行せず表示する」ための入口なので、記録を作らない。
+    作ってしまうと、確認しただけで Gate履歴が増えてしまう。
+    """
     show(detail)
+
+    if dry_run:
+        show(f"（dry-run のため BLOCKED記録は作成しません: {reason}）")
+        return 1
+
     record = write_runner_record(root, ctx, stage, reason, detail, previous, violations)
     show(f"BLOCKED記録を作成しました: {rel(root, record)}")
     return 1
@@ -1236,7 +1453,7 @@ def resolve_retry_action(root: Path, config: dict[str, str], feature_dir: str) -
 def cmd_run(root: Path, config: dict[str, str], ctx: dict[str, str],
             overrides: dict[str, str], once: bool, dry_run: bool,
             review_current: str = "", retry_blocked: bool = False,
-            spec_review: bool = False) -> int:
+            spec_review: bool = False, rework: str = "") -> int:
     feature_dir = ctx["feature_dir"]
     stages = split_list(config.get("stages", ""))
     max_rounds = int(config.get("max_rounds", "3"))
@@ -1248,6 +1465,7 @@ def cmd_run(root: Path, config: dict[str, str], ctx: dict[str, str],
             ("--review-current", bool(review_current)),
             ("--retry-blocked", retry_blocked),
             ("--spec-review", spec_review),
+            ("--rework", bool(rework)),
         ) if value
     ]
 
@@ -1288,7 +1506,13 @@ def cmd_run(root: Path, config: dict[str, str], ctx: dict[str, str],
 
         return 0 if record is not None else 1
 
+    # --- 通過済み stage からのやり直し：人間が stage を明示したときだけ行う
+    if rework:
+        if rework not in stages:
+            raise SystemExit(f"--rework の値が stages にありません: {rework!r}")
+
     pending_retry = retry_blocked
+    pending_rework = rework
 
     while True:
         if pending_retry:
@@ -1298,8 +1522,25 @@ def cmd_run(root: Path, config: dict[str, str], ctx: dict[str, str],
             show(f"BLOCKED からの再試行: {action.stage}"
                  f"（blocked_reason: {action.note or '不明'}）")
             show(f"  元の記録: {rel(root, action.record)}（変更せず履歴として残します）")
+        elif pending_rework:
+            action = Action("rework", pending_rework, latest_record(root, feature_dir))
+            pending_rework = ""
+
+            show(f"通過済み stage のやり直し: {action.stage}")
+            show("  過去の Gate記録は変更せず、新しい記録を追加します。")
         else:
             action = resolve_action(root, config, feature_dir)
+
+        # 完了・承認待ちと判定する前に、通過済み成果物が変わっていないかを確認する。
+        # ここは Worker を起動しないため Manufacturing Preflight が働かない。
+        # 古い PASS をそのまま完成扱いにしないための、最後の関門になる。
+        if action.kind in ("done", "await_human"):
+            stale = stale_stages(root, config, ctx)
+
+            if stale:
+                for line in describe_stale(config, stale):
+                    show(line)
+                return 1
 
         if action.kind == "done":
             show("完了しました。")
@@ -1330,7 +1571,7 @@ def cmd_run(root: Path, config: dict[str, str], ctx: dict[str, str],
                 root, ctx, action.stage or (stages[0] if stages else "?"),
                 "state_error",
                 f"状態遷移を解決できません: {action.note}",
-                action.record,
+                action.record, dry_run=dry_run,
             )
 
         if action.kind == "fix":
@@ -1339,9 +1580,9 @@ def cmd_run(root: Path, config: dict[str, str], ctx: dict[str, str],
                 return halt(
                     root, ctx, action.stage, "non_convergence",
                     f"収束ループが上限に達しました（max_rounds={max_rounds}）。",
-                    action.record,
+                    action.record, dry_run=dry_run,
                 )
-        elif action.kind in ("run", "retry"):
+        elif action.kind in ("run", "retry", "rework"):
             fix_rounds = 0
             if (action.kind == "run"
                     and count_returns_to(root, feature_dir, action.stage) >= max_returns):
@@ -1349,13 +1590,13 @@ def cmd_run(root: Path, config: dict[str, str], ctx: dict[str, str],
                     root, ctx, action.stage, "non_convergence",
                     f"{action.stage} への差し戻しが上限に達しました"
                     f"（max_returns_per_gate={max_returns}）。",
-                    action.record,
+                    action.record, dry_run=dry_run,
                 )
 
         # --- Manufacturing Preflight
         # 製造 stage で Worker を動かす前に、承認済み仕様 baseline を確認する。
         # Reviewer だけの動作（review_only / review_note）は読み取りのため対象外。
-        if (action.kind in ("run", "fix", "retry")
+        if (action.kind in ("run", "fix", "retry", "rework")
                 and is_manufacturing_stage(config, action.stage)):
             ok, detail = check_spec_baseline(root, config, ctx)
 
@@ -1364,8 +1605,24 @@ def cmd_run(root: Path, config: dict[str, str], ctx: dict[str, str],
                 return halt(
                     root, ctx, spec_stage(config), "spec_not_approved",
                     f"Manufacturing Preflight に失敗しました。\n{detail}",
-                    action.record,
+                    action.record, dry_run=dry_run,
                 )
+
+        # --- 上流成果物の変更チェック
+        # stage を通常進行で実行する前に、その stage が依存する上流が
+        # 通過時のままかを確認する。古い G2 のまま CP3 を作らせないため。
+        # 自分自身は作り直す対象なので見ない。
+        # 明示的な人間の操作（rework / retry / review_only / review_note）は、
+        # 変更を承知のうえの指示なので止めない。
+        # 仕様 stage は上の Manufacturing Preflight が担当する。
+        if action.kind == "run":
+            stale = stale_stages(root, config, ctx, before=action.stage)
+
+            if stale:
+                show(f"{action.stage} を実行できません。")
+                for line in describe_stale(config, stale):
+                    show(line)
+                return 1
 
         record = execute(root, config, ctx, action, overrides, dry_run)
 
@@ -1423,6 +1680,12 @@ def main() -> None:
         "（BLOCKED からの復旧。過去の記録は残す）",
     )
     parser.add_argument(
+        "--rework",
+        metavar="STAGE",
+        help="通過済みの stage を Worker から明示的にやり直す"
+        "（完成後の修正。過去の記録は残す）",
+    )
+    parser.add_argument(
         "--spec-review",
         action="store_true",
         help="仕様書（20_spec.md）のAIレビューだけを単独実行する。"
@@ -1458,6 +1721,7 @@ def main() -> None:
         cmd_run(
             root, config, ctx, overrides, args.once, args.dry_run,
             args.review_current or "", args.retry_blocked, args.spec_review,
+            args.rework or "",
         )
     )
 

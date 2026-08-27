@@ -605,6 +605,9 @@ stage_g2_worker    = {feature_dir}/23_test_plan.md, {feature_dir}/24_review_chec
 stage_g2_reviewer  = {feature_dir}/gates/
 stage_cp3_worker   = src/{app}/features/, tests/{app}/
 stage_cp3_reviewer = {feature_dir}/gates/, {feature_dir}/25_review_result.md
+stage_g1_artifacts  = {feature_dir}/21_design.md, {feature_dir}/22_flow.md
+stage_g2_artifacts  = {feature_dir}/23_test_plan.md
+stage_cp3_artifacts = src/{app}/features/{feature}.py
 stage_cp1_prompts   = prompts/create_feature_spec.md
 stage_g1_prompts  = prompts/create_function_design.md
 stage_g2_prompts   = prompts/create_test_design.md
@@ -1908,3 +1911,873 @@ def test_status_reports_run_when_matching_spec_is_approved(sandbox, capsys):
     assert code == 0
     assert "製造開始条件: 満たしている" in out
     assert "次の動作: run (stage=G1)" in out
+
+
+# ---------------------------------------------------------------- 通過済み stage の成果物ハッシュ
+
+
+def test_hash_paths_changes_with_content(sandbox):
+    """内容が変われば artifacts_hash が変わること。"""
+    root, config, ctx = sandbox
+    patterns = fr.stage_artifacts(config, "G1", ctx)
+
+    before = fr.hash_paths(root, patterns)
+    (root / ctx["feature_dir"] / "21_design.md").write_text("変更後\n", encoding="utf-8")
+
+    assert fr.hash_paths(root, patterns) != before
+
+
+def test_hash_paths_is_stable_without_change(sandbox):
+    root, config, ctx = sandbox
+    patterns = fr.stage_artifacts(config, "G1", ctx)
+
+    assert fr.hash_paths(root, patterns) == fr.hash_paths(root, patterns)
+
+
+def test_hash_paths_detects_added_file_in_directory(sandbox):
+    """ディレクトリ指定では、ファイルの追加も検出できること。"""
+    root, _, _ = sandbox
+    patterns = ["src/demo_app/features/"]
+
+    (root / "src/demo_app/features").mkdir(parents=True)
+    (root / "src/demo_app/features/a.py").write_text("a\n", encoding="utf-8")
+    before = fr.hash_paths(root, patterns)
+
+    (root / "src/demo_app/features/b.py").write_text("b\n", encoding="utf-8")
+
+    assert fr.hash_paths(root, patterns) != before
+
+
+def test_hash_paths_ignores_gitignored_files(sandbox):
+    """__pycache__ のような無視対象を数えないこと。"""
+    root, _, _ = sandbox
+    (root / ".gitignore").write_text("__pycache__/\n", encoding="utf-8")
+
+    patterns = ["src/demo_app/features/"]
+    (root / "src/demo_app/features").mkdir(parents=True)
+    (root / "src/demo_app/features/a.py").write_text("a\n", encoding="utf-8")
+    before = fr.hash_paths(root, patterns)
+
+    cache = root / "src/demo_app/features/__pycache__"
+    cache.mkdir()
+    (cache / "a.pyc").write_bytes(b"\x00")
+
+    assert fr.hash_paths(root, patterns) == before
+
+
+def test_hash_paths_empty_without_patterns(sandbox):
+    root, _, _ = sandbox
+    assert fr.hash_paths(root, []) == ""
+
+
+def pass_record(root, config, ctx, name, stage, seq):
+    """artifacts_hash つきの PASS 記録（Reviewer が転記した想定）。"""
+    return write_record(
+        root / ctx["feature_dir"] / "gates", name,
+        verdict="PASS", next_step="GO", gate=stage, run_seq=seq,
+        recorded_by="reviewer",
+        artifacts_hash=fr.current_artifacts_hash(root, config, ctx, stage),
+    )
+
+
+def test_stage_baseline_state_match_after_pass(sandbox):
+    root, config, ctx = sandbox
+    pass_record(root, config, ctx, "0002_x_g1.md", "G1", 2)
+
+    assert fr.stage_baseline_state(root, config, ctx, "G1") == "match"
+
+
+def test_stage_baseline_state_changed_after_edit(sandbox):
+    root, config, ctx = sandbox
+    pass_record(root, config, ctx, "0002_x_g1.md", "G1", 2)
+
+    (root / ctx["feature_dir"] / "21_design.md").write_text("方式を変えた\n", encoding="utf-8")
+
+    assert fr.stage_baseline_state(root, config, ctx, "G1") == "changed"
+
+
+def test_stage_baseline_state_no_pass_before_gate(sandbox):
+    root, config, ctx = sandbox
+    assert fr.stage_baseline_state(root, config, ctx, "G1") == "no_pass"
+
+
+def test_stage_baseline_state_unknown_for_record_without_hash(sandbox):
+    """artifacts_hash を持たない過去の記録は判定不能として扱うこと（後方互換）。"""
+    root, config, ctx = sandbox
+    write_record(
+        root / ctx["feature_dir"] / "gates", "0002_x_g1.md",
+        verdict="PASS", gate="G1", run_seq=2,
+    )
+
+    assert fr.stage_baseline_state(root, config, ctx, "G1") == "unknown"
+
+
+def test_stage_baseline_state_uses_latest_pass(sandbox):
+    """同じ stage に複数の PASS がある場合、最新の PASS と比べること。"""
+    root, config, ctx = sandbox
+    pass_record(root, config, ctx, "0002_x_g1.md", "G1", 2)
+
+    (root / ctx["feature_dir"] / "21_design.md").write_text("作り直した\n", encoding="utf-8")
+    pass_record(root, config, ctx, "0005_x_g1.md", "G1", 5)
+
+    assert fr.stage_baseline_state(root, config, ctx, "G1") == "match"
+
+
+# ---------------------------------------------------------------- stale 判定
+
+
+def test_stale_stages_empty_when_nothing_changed(sandbox):
+    root, config, ctx = sandbox
+    approve_spec(root, config, ctx)
+    pass_record(root, config, ctx, "0002_x_g1.md", "G1", 2)
+    pass_record(root, config, ctx, "0003_x_g2.md", "G2", 3)
+
+    assert fr.stale_stages(root, config, ctx) == []
+
+
+def test_stale_stages_reports_g2_after_test_plan_edit(sandbox):
+    """G2 の試験観点を変えたら G2 が stale になること。"""
+    root, config, ctx = sandbox
+    approve_spec(root, config, ctx)
+    pass_record(root, config, ctx, "0002_x_g1.md", "G1", 2)
+    pass_record(root, config, ctx, "0003_x_g2.md", "G2", 3)
+
+    (root / ctx["feature_dir"] / "23_test_plan.md").write_text(
+        "# 23_test_plan.md\n観点を1つ足した\n", encoding="utf-8",
+    )
+
+    assert fr.stale_stages(root, config, ctx) == ["G2"]
+
+
+def test_stale_stages_reports_g1_after_design_edit(sandbox):
+    root, config, ctx = sandbox
+    approve_spec(root, config, ctx)
+    pass_record(root, config, ctx, "0002_x_g1.md", "G1", 2)
+    pass_record(root, config, ctx, "0003_x_g2.md", "G2", 3)
+
+    (root / ctx["feature_dir"] / "22_flow.md").write_text("処理方式を変えた\n", encoding="utf-8")
+
+    assert fr.stale_stages(root, config, ctx) == ["G1"]
+
+
+def test_stale_stages_reports_spec_stage_after_spec_edit(sandbox):
+    """承認後に仕様を変えたら CP1 が stale になること。"""
+    root, config, ctx = sandbox
+    approve_spec(root, config, ctx)
+    pass_record(root, config, ctx, "0002_x_g1.md", "G1", 2)
+
+    (root / ctx["feature_dir"] / "20_spec.md").write_text("期待動作を変えた\n", encoding="utf-8")
+
+    assert fr.stale_stages(root, config, ctx) == ["CP1"]
+
+
+def test_stale_stages_ignores_spec_before_first_approval(sandbox):
+    """まだ一度も承認していない feature を stale と誤判定しないこと。"""
+    root, config, ctx = sandbox
+    assert fr.stale_stages(root, config, ctx) == []
+
+
+def test_stale_stages_lists_upstream_first(sandbox):
+    """複数 stage が変わった場合、stages 順（上流が先）で返すこと。"""
+    root, config, ctx = sandbox
+    approve_spec(root, config, ctx)
+    pass_record(root, config, ctx, "0002_x_g1.md", "G1", 2)
+    pass_record(root, config, ctx, "0003_x_g2.md", "G2", 3)
+
+    (root / ctx["feature_dir"] / "21_design.md").write_text("設計変更\n", encoding="utf-8")
+    (root / ctx["feature_dir"] / "23_test_plan.md").write_text("観点追加\n", encoding="utf-8")
+
+    assert fr.stale_stages(root, config, ctx) == ["G1", "G2"]
+
+
+def test_describe_stale_names_downstream_and_both_recoveries(sandbox):
+    root, config, _ = sandbox
+    lines = "\n".join(fr.describe_stale(config, ["G2"]))
+
+    assert "G2" in lines
+    assert "CP3" in lines
+    assert "--review-current G2" in lines
+    assert "--rework G2" in lines
+
+
+def test_describe_stale_points_spec_stage_to_spec_review(sandbox):
+    """仕様 stage の復旧は --spec-review と再承認であること。"""
+    root, config, _ = sandbox
+    lines = "\n".join(fr.describe_stale(config, ["CP1"]))
+
+    assert "--spec-review" in lines
+    assert "--review-current CP1" not in lines
+
+
+# ---------------------------------------------------------------- 完成後の変更で停止する
+
+
+def approved_cp3(root, config, ctx, seq=4, name="0004_x_cp3.md"):
+    """人間が受け入れ済みの CP3 PASS（= 完成状態）。"""
+    record = pass_record(root, config, ctx, name, "CP3", seq)
+    record.write_text(
+        record.read_text(encoding="utf-8") + approval("受け入れ判断", True),
+        encoding="utf-8",
+    )
+    return record
+
+
+def completed_feature(root, config, ctx):
+    """CP1 承認 → G1/G2 PASS → CP3 受け入れ済み、の完成状態を作る。"""
+    (root / "src/demo_app/features").mkdir(parents=True, exist_ok=True)
+    (root / "src/demo_app/features/demo.py").write_text("x = 1\n", encoding="utf-8")
+
+    approve_spec(root, config, ctx)
+    pass_record(root, config, ctx, "0002_x_g1.md", "G1", 2)
+    pass_record(root, config, ctx, "0003_x_g2.md", "G2", 3)
+    approved_cp3(root, config, ctx)
+
+
+def test_completed_feature_reports_done(sandbox, capsys, monkeypatch):
+    """何も変えていなければ、従来どおり完了と報告すること。"""
+    root, config, ctx = sandbox
+    completed_feature(root, config, ctx)
+
+    fake = FakeAI(root, lambda info: {})
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    code = fr.cmd_run(root, config, ctx, {}, False, False)
+
+    assert code == 0
+    assert "完了しました。" in capsys.readouterr().out
+    assert fake.calls == []
+
+
+def test_done_stops_when_implementation_changed(sandbox, capsys, monkeypatch):
+    """完成後に実装コードを直したら、完了扱いにせず停止すること。"""
+    root, config, ctx = sandbox
+    completed_feature(root, config, ctx)
+
+    (root / "src/demo_app/features/demo.py").write_text("x = 2\n", encoding="utf-8")
+
+    fake = FakeAI(root, lambda info: {})
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    code = fr.cmd_run(root, config, ctx, {}, False, False)
+    out = capsys.readouterr().out
+
+    assert code == 1
+    assert "完了しました。" not in out
+    assert "CP3" in out
+    assert fake.calls == []
+
+
+def test_done_stops_when_test_plan_changed(sandbox, capsys, monkeypatch):
+    """完成後に G2 の試験観点を足したら、G2 と下流 CP3 を提示して停止すること。"""
+    root, config, ctx = sandbox
+    completed_feature(root, config, ctx)
+
+    (root / ctx["feature_dir"] / "23_test_plan.md").write_text(
+        "# 23_test_plan.md\nTV-007 を追加\n", encoding="utf-8",
+    )
+
+    monkeypatch.setattr(fr, "run_ai", FakeAI(root, lambda info: {}))
+    code = fr.cmd_run(root, config, ctx, {}, False, False)
+    out = capsys.readouterr().out
+
+    assert code == 1
+    assert "変更が検出された stage: G2" in out
+    assert "再確認が必要な下流 stage: CP3" in out
+
+
+def test_done_stops_when_design_changed(sandbox, capsys, monkeypatch):
+    root, config, ctx = sandbox
+    completed_feature(root, config, ctx)
+
+    (root / ctx["feature_dir"] / "21_design.md").write_text("方式変更\n", encoding="utf-8")
+
+    monkeypatch.setattr(fr, "run_ai", FakeAI(root, lambda info: {}))
+    code = fr.cmd_run(root, config, ctx, {}, False, False)
+    out = capsys.readouterr().out
+
+    assert code == 1
+    assert "変更が検出された stage: G1" in out
+    assert "再確認が必要な下流 stage: G2, CP3" in out
+
+
+def test_done_stops_when_spec_changed(sandbox, capsys, monkeypatch):
+    """完成後に仕様を変えたら、AI製造へ進まず停止すること。"""
+    root, config, ctx = sandbox
+    completed_feature(root, config, ctx)
+
+    (root / ctx["feature_dir"] / "20_spec.md").write_text("期待動作を変えた\n", encoding="utf-8")
+
+    fake = FakeAI(root, lambda info: {})
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    code = fr.cmd_run(root, config, ctx, {}, False, False)
+    out = capsys.readouterr().out
+
+    assert code == 1
+    assert "変更が検出された stage: CP1" in out
+    assert "--spec-review" in out
+    assert fake.calls == []
+
+
+def test_stale_stop_does_not_write_gate_record(sandbox, monkeypatch):
+    """stale の検出そのものは判断ではないので、Gate記録を増やさないこと。"""
+    root, config, ctx = sandbox
+    completed_feature(root, config, ctx)
+    before = len(fr.list_records(root, ctx["feature_dir"]))
+
+    (root / ctx["feature_dir"] / "23_test_plan.md").write_text("追加\n", encoding="utf-8")
+
+    monkeypatch.setattr(fr, "run_ai", FakeAI(root, lambda info: {}))
+    fr.cmd_run(root, config, ctx, {}, False, False)
+
+    assert len(fr.list_records(root, ctx["feature_dir"])) == before
+
+
+def test_stale_stop_preserves_existing_records(sandbox, monkeypatch):
+    """既存 Gate記録を書き換えないこと。"""
+    root, config, ctx = sandbox
+    completed_feature(root, config, ctx)
+
+    records = fr.list_records(root, ctx["feature_dir"])
+    before = {p.name: p.read_bytes() for p in records}
+
+    (root / ctx["feature_dir"] / "21_design.md").write_text("変更\n", encoding="utf-8")
+
+    monkeypatch.setattr(fr, "run_ai", FakeAI(root, lambda info: {}))
+    fr.cmd_run(root, config, ctx, {}, False, False)
+
+    assert {p.name: p.read_bytes() for p in fr.list_records(root, ctx["feature_dir"])} == before
+
+
+def test_await_human_stops_when_upstream_changed(sandbox, capsys, monkeypatch):
+    """CP3 承認待ちの状態でも、上流が変わっていれば承認へ進ませないこと。"""
+    root, config, ctx = sandbox
+    (root / "src/demo_app/features").mkdir(parents=True, exist_ok=True)
+    (root / "src/demo_app/features/demo.py").write_text("x = 1\n", encoding="utf-8")
+
+    approve_spec(root, config, ctx)
+    pass_record(root, config, ctx, "0002_x_g1.md", "G1", 2)
+    pass_record(root, config, ctx, "0003_x_g2.md", "G2", 3)
+    pass_record(root, config, ctx, "0004_x_cp3.md", "CP3", 4)  # 未承認
+
+    (root / ctx["feature_dir"] / "23_test_plan.md").write_text("観点追加\n", encoding="utf-8")
+
+    monkeypatch.setattr(fr, "run_ai", FakeAI(root, lambda info: {}))
+    code = fr.cmd_run(root, config, ctx, {}, False, False)
+    out = capsys.readouterr().out
+
+    assert code == 1
+    assert "変更が検出された stage: G2" in out
+    assert "人間の判断が必要です" not in out
+
+
+def test_done_unaffected_for_records_without_artifacts_hash(sandbox, capsys, monkeypatch):
+    """artifacts_hash を持たない既存 feature は、従来どおり完了と報告すること。"""
+    root, config, ctx = sandbox
+    (root / "src/demo_app/features").mkdir(parents=True, exist_ok=True)
+    (root / "src/demo_app/features/demo.py").write_text("x = 1\n", encoding="utf-8")
+
+    approve_spec(root, config, ctx)
+    gates = root / ctx["feature_dir"] / "gates"
+    write_record(gates, "0002_x_g1.md", verdict="PASS", gate="G1", run_seq=2)
+    write_record(gates, "0003_x_g2.md", verdict="PASS", gate="G2", run_seq=3)
+    record = write_record(gates, "0004_x_cp3.md", verdict="PASS", gate="CP3", run_seq=4)
+    record.write_text(
+        record.read_text(encoding="utf-8") + approval("受け入れ判断", True),
+        encoding="utf-8",
+    )
+
+    # 実装を変えても、比較材料がないので停止しない（後方互換）
+    (root / "src/demo_app/features/demo.py").write_text("x = 2\n", encoding="utf-8")
+
+    monkeypatch.setattr(fr, "run_ai", FakeAI(root, lambda info: {}))
+    code = fr.cmd_run(root, config, ctx, {}, False, False)
+
+    assert code == 0
+    assert "完了しました。" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------- Reviewer への artifacts_hash
+
+
+def test_reviewer_receives_artifacts_hash(sandbox, monkeypatch):
+    root, config, ctx = sandbox
+    approve_spec(root, config, ctx)
+
+    fake = FakeAI(root, lambda info: {
+        "gate": info["stage"], "run_seq": info["run_seq"],
+        "verdict": "PASS", "next_step": "GO",
+    })
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    fr.cmd_run(root, config, ctx, {}, True, False)
+
+    passed = fake.reviewer_calls()[0]["artifacts_hash"]
+    assert passed == fr.current_artifacts_hash(root, config, ctx, "G1")
+    assert passed
+
+
+def test_artifacts_hash_reflects_state_after_worker(sandbox, monkeypatch):
+    """Worker が成果物を書き換えた後の状態が渡されること。"""
+    root, config, ctx = sandbox
+    approve_spec(root, config, ctx)
+
+    design = root / ctx["feature_dir"] / "21_design.md"
+    before = fr.current_artifacts_hash(root, config, ctx, "G1")
+
+    fake = FakeAI(root, lambda info: {
+        "gate": info["stage"], "run_seq": info["run_seq"],
+        "verdict": "PASS", "next_step": "GO",
+    })
+
+    def worker_writes(root_, argv):
+        if fr.WORKER_PROMPT in argv[1]:
+            design.write_text("Worker が書いた設計\n", encoding="utf-8")
+        return fake(root_, argv)
+
+    monkeypatch.setattr(fr, "run_ai", worker_writes)
+
+    fr.cmd_run(root, config, ctx, {}, True, False)
+
+    passed = fake.reviewer_calls()[0]["artifacts_hash"]
+    assert passed != before
+    assert passed == fr.current_artifacts_hash(root, config, ctx, "G1")
+
+
+def test_spec_stage_has_no_artifacts_hash(sandbox):
+    """CP1 は spec_hash 側で判定するため artifacts_hash を使わないこと。"""
+    root, config, ctx = sandbox
+    assert fr.current_artifacts_hash(root, config, ctx, "CP1") == ""
+
+
+# ---------------------------------------------------------------- --rework
+
+
+def rework_ai(root, verdicts=None):
+    """stage ごとに verdict を返す FakeAI。既定は常に PASS。"""
+    verdicts = verdicts or {}
+
+    return FakeAI(root, lambda info: {
+        "gate": info["stage"], "run_seq": info["run_seq"],
+        "verdict": verdicts.get(info["stage"], "PASS"), "next_step": "GO",
+        "artifacts_hash": info["artifacts_hash"],
+        "triggered_by": info["triggered_by"],
+        "supersedes": info["supersedes"],
+    })
+
+
+def test_rework_runs_worker_then_reviewer(sandbox, monkeypatch):
+    """--rework は Worker から再実行すること（--review-current との違い）。"""
+    root, config, ctx = sandbox
+    completed_feature(root, config, ctx)
+
+    fake = rework_ai(root)
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    fr.cmd_run(root, config, ctx, {}, True, False, rework="G2")
+
+    assert fake.prompts_used()[:2] == [
+        f"{fr.WORKER_PROMPT} を参照してください。",
+        f"{fr.REVIEWER_PROMPT} を参照してください。",
+    ]
+    assert fake.worker_calls()[0]["stage"] == "G2"
+
+
+def test_rework_records_causality_and_supersedes(sandbox, monkeypatch):
+    root, config, ctx = sandbox
+    completed_feature(root, config, ctx)
+
+    fake = rework_ai(root)
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    fr.cmd_run(root, config, ctx, {}, True, False, rework="G2")
+
+    call = fake.reviewer_calls()[0]
+    assert call["triggered_by"] == "REWORK"
+    assert call["supersedes"].endswith("0003_x_g2.md")
+
+
+def test_rework_preserves_previous_records(sandbox, monkeypatch):
+    """過去の Gate記録を削除も上書きもしないこと。"""
+    root, config, ctx = sandbox
+    completed_feature(root, config, ctx)
+
+    before = {p.name: p.read_bytes() for p in fr.list_records(root, ctx["feature_dir"])}
+
+    monkeypatch.setattr(fr, "run_ai", rework_ai(root))
+    fr.cmd_run(root, config, ctx, {}, True, False, rework="G2")
+
+    after = {p.name: p.read_bytes() for p in fr.list_records(root, ctx["feature_dir"])}
+
+    assert set(before) < set(after)
+    assert all(after[name] == data for name, data in before.items())
+
+
+def test_rework_continues_into_downstream_stages(sandbox, monkeypatch):
+    """--rework G2 のあと、CP3 まで自動で進むこと。"""
+    root, config, ctx = sandbox
+    completed_feature(root, config, ctx)
+
+    fake = rework_ai(root)
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    fr.cmd_run(root, config, ctx, {}, False, False, rework="G2")
+
+    assert [c["stage"] for c in fake.worker_calls()] == ["G2", "CP3"]
+
+
+def test_rework_rejects_unknown_stage(sandbox):
+    root, config, ctx = sandbox
+
+    with pytest.raises(SystemExit) as error:
+        fr.cmd_run(root, config, ctx, {}, False, False, rework="G9")
+
+    assert "stages にありません" in str(error.value)
+
+
+@pytest.mark.parametrize("other", [
+    {"review_current": "G2"},
+    {"retry_blocked": True},
+    {"spec_review": True},
+])
+def test_rework_is_exclusive_with_other_modes(sandbox, other):
+    root, config, ctx = sandbox
+
+    with pytest.raises(SystemExit) as error:
+        fr.cmd_run(root, config, ctx, {}, False, False, rework="G2", **other)
+
+    assert "同時に指定できません" in str(error.value)
+
+
+def test_rework_blocked_by_manufacturing_preflight(sandbox, monkeypatch):
+    """仕様が未承認なら、--rework でも製造は始まらないこと。"""
+    root, config, ctx = sandbox
+
+    fake = rework_ai(root)
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    code = fr.cmd_run(root, config, ctx, {}, False, False, rework="G1")
+
+    assert code == 1
+    assert fake.calls == []
+    assert latest_front(root, ctx)["blocked_reason"] == "spec_not_approved"
+
+
+def test_rework_spec_stage_still_requires_human_approval(sandbox, monkeypatch):
+    """--rework CP1 でも、AIが人間承認を代行しないこと。"""
+    root, config, ctx = sandbox
+    completed_feature(root, config, ctx)
+
+    fake = rework_ai(root)
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    code = fr.cmd_run(root, config, ctx, {}, False, False, rework="CP1")
+
+    assert code == 0
+    # CP1 の新しい PASS 記録が承認待ちで止まり、G1 以降へ進まないこと
+    assert [c["stage"] for c in fake.worker_calls()] == ["CP1"]
+    assert not fr.is_approved(fr.latest_record(root, ctx["feature_dir"]), "仕様承認")
+
+
+def test_rework_dry_run_does_not_execute(sandbox, monkeypatch):
+    root, config, ctx = sandbox
+    completed_feature(root, config, ctx)
+
+    fake = rework_ai(root)
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    code = fr.cmd_run(root, config, ctx, {}, False, True, rework="G2")
+
+    assert code == 0
+    assert fake.calls == []
+
+
+def test_dry_run_does_not_write_blocked_record(sandbox, monkeypatch):
+    """--dry-run は Gate記録を増やさないこと。"""
+    root, config, ctx = sandbox
+    before = len(fr.list_records(root, ctx["feature_dir"]))
+
+    monkeypatch.setattr(fr, "run_ai", rework_ai(root))
+    code = fr.cmd_run(root, config, ctx, {}, False, True, rework="G1")
+
+    assert code == 1
+    assert len(fr.list_records(root, ctx["feature_dir"])) == before
+
+
+# ---------------------------------------------------------------- 既存操作との住み分け
+
+
+def test_retry_blocked_still_rejects_completed_feature(sandbox):
+    """完成済み feature の修正へ --retry-blocked を流用できないこと。"""
+    root, config, ctx = sandbox
+    completed_feature(root, config, ctx)
+
+    (root / ctx["feature_dir"] / "23_test_plan.md").write_text("観点追加\n", encoding="utf-8")
+
+    with pytest.raises(SystemExit) as error:
+        fr.cmd_run(root, config, ctx, {}, False, False, retry_blocked=True)
+
+    assert "BLOCKED からの復旧専用です" in str(error.value)
+
+
+def test_review_current_recovers_human_edit_without_worker(sandbox, monkeypatch):
+    """人間が直した成果物は、Worker を起動せずに再判定できること。"""
+    root, config, ctx = sandbox
+    completed_feature(root, config, ctx)
+
+    (root / ctx["feature_dir"] / "23_test_plan.md").write_text("人間が追記\n", encoding="utf-8")
+
+    fake = rework_ai(root)
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    code = fr.cmd_run(root, config, ctx, {}, False, False, review_current="G2")
+
+    assert code == 0
+    assert fake.worker_calls() == []
+    assert fake.reviewer_calls()[0]["mode"] == "manual"
+
+
+def test_review_current_clears_stale_and_lets_downstream_run(sandbox, monkeypatch):
+    """--review-current で G2 を通し直すと、下流 CP3 が再実行できる状態になること。"""
+    root, config, ctx = sandbox
+    completed_feature(root, config, ctx)
+
+    (root / ctx["feature_dir"] / "23_test_plan.md").write_text("人間が追記\n", encoding="utf-8")
+
+    monkeypatch.setattr(fr, "run_ai", rework_ai(root))
+    fr.cmd_run(root, config, ctx, {}, False, False, review_current="G2")
+
+    assert fr.stale_stages(root, config, ctx) == []
+    assert fr.resolve_action(root, config, ctx["feature_dir"]).stage == "CP3"
+
+
+# ---------------------------------------------------------------- --status の表示
+
+
+def test_status_reports_changed_stage(sandbox, capsys):
+    root, config, ctx = sandbox
+    completed_feature(root, config, ctx)
+
+    (root / ctx["feature_dir"] / "23_test_plan.md").write_text("観点追加\n", encoding="utf-8")
+
+    fr.cmd_status(root, config, ctx)
+    out = capsys.readouterr().out
+
+    assert "stage 成果物の baseline:" in out
+    assert "通過後に変更あり" in out
+    assert "次の動作: done" not in out
+
+
+def test_status_reports_match_when_unchanged(sandbox, capsys):
+    root, config, ctx = sandbox
+    completed_feature(root, config, ctx)
+
+    fr.cmd_status(root, config, ctx)
+    out = capsys.readouterr().out
+
+    assert "通過時と同じ" in out
+    assert "通過後に変更あり" not in out
+    assert "次の動作: done" in out
+
+
+def test_status_reports_unknown_for_legacy_records(sandbox, capsys):
+    root, config, ctx = sandbox
+    approve_spec(root, config, ctx)
+    write_record(
+        root / ctx["feature_dir"] / "gates", "0002_x_g1.md",
+        verdict="PASS", gate="G1", run_seq=2,
+    )
+
+    fr.cmd_status(root, config, ctx)
+
+    assert "判定不能" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------- 設定の整合
+
+
+def test_config_artifacts_stay_within_worker_scope():
+    """stage_*_artifacts は、その stage の Worker が変更できる範囲に収まること。"""
+    config = fr.read_config(REPO_ROOT)
+    ctx = {"app": "demo_app", "feature": "demo",
+           "feature_dir": "docs/demo_app/features/demo"}
+
+    for stage in fr.split_list(config["stages"]):
+        allowed = fr.expand(config.get(f"stage_{stage.lower()}_worker", ""), ctx)
+
+        for path in fr.stage_artifacts(config, stage, ctx):
+            assert fr.is_allowed(path, allowed), f"{stage}: {path} が Worker の変更範囲外"
+
+
+def test_config_artifacts_exclude_working_notes():
+    """作業メモとレビュー結果を baseline に含めないこと。"""
+    config = fr.read_config(REPO_ROOT)
+    ctx = {"app": "demo_app", "feature": "demo",
+           "feature_dir": "docs/demo_app/features/demo"}
+
+    for stage in fr.split_list(config["stages"]):
+        joined = " ".join(fr.stage_artifacts(config, stage, ctx))
+        assert "tasks.md" not in joined
+        assert "25_review_result.md" not in joined
+
+
+def test_manufacturing_stages_have_artifacts_configured():
+    """製造 stage には必ず artifacts 設定があること。"""
+    config = fr.read_config(REPO_ROOT)
+    ctx = {"app": "demo_app", "feature": "demo",
+           "feature_dir": "docs/demo_app/features/demo"}
+
+    for stage in fr.split_list(config["stages"]):
+        if fr.is_manufacturing_stage(config, stage):
+            assert fr.stage_artifacts(config, stage, ctx), stage
+
+
+def test_rule_document_documents_rework():
+    text = (REPO_ROOT / fr.CONFIG_DOC).read_text(encoding="utf-8")
+
+    assert "--rework" in text
+    assert "REWORK" in text
+    assert "artifacts_hash" in text
+
+
+def test_gate_record_template_has_artifacts_hash():
+    text = (REPO_ROOT / "docs/templates/gate_record_template.md").read_text(encoding="utf-8")
+
+    assert "artifacts_hash:" in text
+    assert "REWORK" in text
+
+
+# ---------------------------------------------------------------- 上流 stale での stage 実行
+
+
+def test_run_stops_before_building_on_stale_upstream(sandbox, capsys, monkeypatch):
+    """G2 が変更されていたら、CP3 の Worker を起動しないこと。
+
+    実AI検証で見つかった穴。done / await_human だけを守っても、
+    「G2 PASS のあと G2 を直して、次は CP3」という途中状態を守れない。
+    """
+    root, config, ctx = sandbox
+    approve_spec(root, config, ctx)
+    pass_record(root, config, ctx, "0002_x_g1.md", "G1", 2)
+    pass_record(root, config, ctx, "0003_x_g2.md", "G2", 3)
+
+    (root / ctx["feature_dir"] / "23_test_plan.md").write_text("観点追加\n", encoding="utf-8")
+
+    fake = FakeAI(root, lambda info: {})
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    code = fr.cmd_run(root, config, ctx, {}, False, False)
+    out = capsys.readouterr().out
+
+    assert code == 1
+    assert "変更が検出された stage: G2" in out
+    assert fake.calls == []
+
+
+def test_run_stops_before_g2_when_design_is_stale(sandbox, capsys, monkeypatch):
+    """G1 が変更されていたら、G2 の Worker も起動しないこと。"""
+    root, config, ctx = sandbox
+    approve_spec(root, config, ctx)
+    pass_record(root, config, ctx, "0002_x_g1.md", "G1", 2)
+
+    (root / ctx["feature_dir"] / "21_design.md").write_text("方式変更\n", encoding="utf-8")
+
+    fake = FakeAI(root, lambda info: {})
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    code = fr.cmd_run(root, config, ctx, {}, False, False)
+
+    assert code == 1
+    assert "変更が検出された stage: G1" in capsys.readouterr().out
+    assert fake.calls == []
+
+
+def test_run_ignores_own_stage_when_rerunning_it(sandbox, monkeypatch):
+    """自分自身の stage の変更では止めないこと（作り直す対象なので）。
+
+    RETURN(G1) の直後に、人間が 21_design.md を触っていても G1 は動かせる。
+    """
+    root, config, ctx = sandbox
+    approve_spec(root, config, ctx)
+    pass_record(root, config, ctx, "0002_x_g1.md", "G1", 2)
+    write_record(
+        root / ctx["feature_dir"] / "gates", "0003_x_g2.md",
+        verdict="RETURN", gate="G2", run_seq=3, return_to="G1",
+    )
+
+    (root / ctx["feature_dir"] / "21_design.md").write_text("人間が直した\n", encoding="utf-8")
+
+    fake = FakeAI(root, lambda info: {
+        "gate": info["stage"], "run_seq": info["run_seq"],
+        "verdict": "PASS", "next_step": "GO",
+        "artifacts_hash": info["artifacts_hash"],
+    })
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    fr.cmd_run(root, config, ctx, {}, True, False)
+
+    assert [c["stage"] for c in fake.worker_calls()] == ["G1"]
+
+
+def test_normal_progression_is_not_blocked_by_stale_check(sandbox, monkeypatch):
+    """通常の進行（何も変更していない）を止めないこと。"""
+    root, config, ctx = sandbox
+    approve_spec(root, config, ctx)
+    pass_record(root, config, ctx, "0002_x_g1.md", "G1", 2)
+
+    fake = FakeAI(root, lambda info: {
+        "gate": info["stage"], "run_seq": info["run_seq"],
+        "verdict": "PASS", "next_step": "GO",
+        "artifacts_hash": info["artifacts_hash"],
+    })
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    fr.cmd_run(root, config, ctx, {}, True, False)
+
+    assert [c["stage"] for c in fake.worker_calls()] == ["G2"]
+
+
+def test_review_current_works_even_when_upstream_is_stale(sandbox, monkeypatch):
+    """明示操作は、変更を承知のうえの指示なので止めないこと。"""
+    root, config, ctx = sandbox
+    completed_feature(root, config, ctx)
+
+    (root / ctx["feature_dir"] / "21_design.md").write_text("設計変更\n", encoding="utf-8")
+
+    fake = rework_ai(root)
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    code = fr.cmd_run(root, config, ctx, {}, True, False, review_current="G1")
+
+    assert code == 0
+    assert fake.reviewer_calls()[0]["stage"] == "G1"
+
+
+def test_rework_works_even_when_upstream_is_stale(sandbox, monkeypatch):
+    root, config, ctx = sandbox
+    completed_feature(root, config, ctx)
+
+    (root / ctx["feature_dir"] / "21_design.md").write_text("設計変更\n", encoding="utf-8")
+
+    fake = rework_ai(root)
+    monkeypatch.setattr(fr, "run_ai", fake)
+
+    code = fr.cmd_run(root, config, ctx, {}, True, False, rework="G1")
+
+    assert code == 0
+    assert fake.worker_calls()[0]["stage"] == "G1"
+
+
+def test_stale_stages_before_filters_to_upstream(sandbox):
+    root, config, ctx = sandbox
+    approve_spec(root, config, ctx)
+    pass_record(root, config, ctx, "0002_x_g1.md", "G1", 2)
+    pass_record(root, config, ctx, "0003_x_g2.md", "G2", 3)
+
+    (root / ctx["feature_dir"] / "21_design.md").write_text("設計変更\n", encoding="utf-8")
+    (root / ctx["feature_dir"] / "23_test_plan.md").write_text("観点追加\n", encoding="utf-8")
+
+    assert fr.stale_stages(root, config, ctx) == ["G1", "G2"]
+    assert fr.stale_stages(root, config, ctx, before="G2") == ["G1"]
+    assert fr.stale_stages(root, config, ctx, before="G1") == []
+    assert fr.stale_stages(root, config, ctx, before="CP1") == []

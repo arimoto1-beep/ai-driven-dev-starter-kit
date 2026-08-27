@@ -45,7 +45,66 @@ python tools/feature_runner.py --feature <command_or_app_name>/<feature_name> --
 
 # BLOCKED からの復旧（原因を解消したあと、その stage を明示的に再試行する）
 python tools/feature_runner.py --feature <command_or_app_name>/<feature_name> --retry-blocked
+
+# 通過済み stage のやり直し（完成後の修正。Worker から作り直す）
+python tools/feature_runner.py --feature <command_or_app_name>/<feature_name> --rework G2
 ```
+
+### 完成後の修正（通過済み stage の変更）
+
+**Gate を通過した後に成果物を変更すると、runner はそれを検出して停止します。**
+古い `PASS` をそのまま完成扱いにしないためです。
+
+```text
+$ python tools/feature_runner.py --feature cli_demo/sample
+通過済み stage の成果物が、その stage の判定後に変更されています。
+  変更が検出された stage: G2
+  再確認が必要な下流 stage: CP3
+
+古い判定を完成扱いにしないため、ここで停止します。
+どちらで再開するかは人間が決めてください。
+  成果物を人間が直した場合   : --review-current G2
+  AIに作り直させる場合       : --rework G2
+```
+
+戻り先は「誰が変更したか」ではなく、**どの工程で決める内容を変更したか**で決まります。
+
+| 変更したもの | 戻る stage |
+|---|---|
+| 仕様・期待動作（`20_spec.md`） | `CP1` |
+| 設計・処理方式（`21_design.md`、`22_flow.md`） | `G1` |
+| 試験項目・試験観点（`23_test_plan.md`、`24_review_checklist.md`） | `G2` |
+| 実装コード・テストコード | `CP3` |
+
+- 検出は、Gate記録の `artifacts_hash`（runner が計算し、runner が照合する）で行います
+- **`artifacts_hash` を持たない過去の Gate記録は「判定不能」として扱い、停止しません**（後方互換）
+- **runner は自動で再開しません。** Worker を無条件に再実行すると人間の修正を上書きするおそれがあるため、どちらで再開するかは人間が決めます
+- どちらの操作でも、その stage の新しい Gate記録が「全stage横断で最新の1件」になるため、以降は通常の stage 順で下流が再実行されます
+
+`--status` では stage ごとの状態を確認できます。
+
+```text
+stage 成果物の baseline:
+  CP1  上記の仕様 baseline で判定
+  G1   通過時と同じ
+  G2   **通過後に変更あり**
+  CP3  通過時と同じ
+```
+
+### 3つの復旧操作の使い分け
+
+**用途が違います。混同しないでください。**
+
+| 操作 | 前提 | Worker | 用途 |
+|---|---|---|---|
+| `--retry-blocked` | 最新が `BLOCKED` | 起動する | **停止からの復旧**。原因を解消したあとの再試行 |
+| `--review-current <stage>` | いつでも | 起動しない | **現在の成果物の再確認**。人間の修正を維持したまま判定し直す |
+| `--rework <stage>` | いつでも | 起動する | **通過済み stage のやり直し**。AIに作り直させる |
+
+- `--retry-blocked` は `BLOCKED` 専用です。完成後の修正には使えません（最新が `BLOCKED` でなければ拒否されます）
+- `--rework` を製造 stage に使っても Manufacturing Preflight は働きます。仕様が未承認なら製造は始まりません
+- `--rework CP1` を指定しても、**CP1 の人間承認は消えません。** 仕様レビュー後、承認待ちで停止します
+- 4つの操作（`--spec-review` を含む）は同時に指定できません
 
 ### BLOCKED からの復旧
 

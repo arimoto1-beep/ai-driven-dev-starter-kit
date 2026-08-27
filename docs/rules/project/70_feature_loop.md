@@ -328,6 +328,7 @@ docs/<command_or_app_name>/features/<feature_name>/gates/
 | `HUMAN_NOTE` | 人間の自然文コメントによる再判定 |
 | `MANUAL` | マニュアル介入からの復帰（`--review-current`） |
 | `RETRY_BLOCKED` | BLOCKED からの明示的な再試行（`--retry-blocked`） |
+| `REWORK` | 通過済み stage の明示的なやり直し（`--rework`） |
 | `RUNNER` | runner 自身が停止を記録した |
 
 **runner は stage 別の最新ではなく、全stage横断で最新の1件を読みます。** stage 別に読むと、`RETURN` の直後に差し戻し前の古い `PASS` を採用してしまいます。
@@ -380,6 +381,99 @@ python tools/feature_runner.py --feature <app>/<feature> --retry-blocked
 - `blocked_reason` の種別（`state_error` / `guard_violation` / `non_convergence` など）では区別しません。原因を解消したかどうかを判断するのは人間です
 - 再試行の後は、通常のオートモードへ戻ります
 - `--review-current` とは同時に指定できません
+
+### 完成後の修正（通過済み stage の変更）
+
+**Gate を通過した後に成果物を変更した場合、その stage 以降は再確認が必要です。**
+
+戻り先は「誰が変更したか」ではなく、**どの工程で決める内容を変更したか**で決まります。
+AIが生成した成果物を人間が直接変更することも許容します。
+
+| 変更したもの | 戻る stage |
+|---|---|
+| 仕様・期待動作（`20_spec.md`） | `CP1` |
+| 設計・処理方式（`21_design.md`、`22_flow.md`） | `G1` |
+| 試験項目・試験観点（`23_test_plan.md`、`24_review_checklist.md`） | `G2` |
+| 実装コード・テストコード | `CP3` |
+
+#### 変更の検出方法
+
+runner は、**stage の成果物の内容ハッシュ（SHA-256）を Gate記録へ残し、次回それを照合します。**
+仕組みは `spec_hash` と同じで、**runner が計算し、runner が照合します。**
+
+```text
+runner が stage_<x>_artifacts のファイル群をハッシュ計算
+        ↓
+Reviewer へ artifacts_hash として渡す（AIは計算しない。転記するだけ）
+        ↓
+Gate記録の front matter へ記録される
+        ↓
+次回の実行時、runner が再計算して照合する
+```
+
+- 一致しない場合、その stage は**通過後に変更された**と判定します
+- **`artifacts_hash` を持たない過去の Gate記録は「判定不能」として扱い、停止しません。** 既存 feature の後方互換のためです
+- `CP1` だけは `artifacts_hash` を使いません。仕様の baseline を成立させるのは Gate の `PASS` ではなく**人間の承認**であるため、既存の `spec_hash` と仕様承認で判定します
+
+#### 検出したときの動作
+
+**runner は自動で再実行しません。停止して人間へ渡します。**
+
+```text
+完成済み feature の 23_test_plan.md を変更 → runner を再実行
+  ↓
+G2 の成果物が G2 通過後に変更されていることを検出
+  ↓
+「完了しました」と言わずに停止し、G2 と下流（CP3）が再確認対象であることを提示する
+```
+
+自動で再開しないのは、**どちらの復旧をしたいのかを runner が判断できない**ためです。
+
+| 状況 | 使う操作 |
+|---|---|
+| 人間が成果物を直した。**その内容を維持したい** | `--review-current <stage>`（Worker を起動しない） |
+| **AIに作り直させたい** | `--rework <stage>`（Worker から再実行する） |
+
+Worker を無条件に再実行すると、人間が直した内容を上書きする可能性があります。
+この判断は人間の領域です。`BLOCKED` を自動再開しないのと同じ考え方です。
+
+#### 下流の再実行
+
+**どちらの操作でも、その stage の新しい Gate記録が「全stage横断で最新の1件」になります。**
+そのため以降は通常の stage 順で下流が再実行されます。**特別な復帰経路を設けません。**
+
+```text
+--review-current G2  →  G2 の新しい PASS 記録
+                          ↓ 最新記録が G2 PASS なので
+                        CP3 を Worker から再実行
+                          ↓
+                        CP3：人間の受け入れ判断
+```
+
+#### 通過済み stage のやり直し（`--rework`）
+
+```bash
+python tools/feature_runner.py --feature <app>/<feature> --rework G1
+```
+
+- **Worker から再実行します。** その stage の成果物をAIが作り直します
+- Gate記録に `triggered_by: REWORK` が残り、`supersedes` にその stage の直近の確定記録が入ります
+- **過去の Gate記録は削除も上書きもしません。** 新しい記録として追加します
+- 製造 stage を指定した場合も Manufacturing Preflight は働きます。仕様が未承認なら製造は始まりません
+- `--rework CP1` を指定しても、**CP1 の人間承認は消えません。** 仕様レビュー後、承認待ちで停止します
+- `--review-current` / `--retry-blocked` / `--spec-review` とは同時に指定できません
+
+#### 3つの操作の使い分け
+
+**用途が違います。混同しないでください。**
+
+| 操作 | 前提 | Worker | 用途 |
+|---|---|---|---|
+| `--retry-blocked` | 最新が `BLOCKED` | 起動する | **停止からの復旧**。原因を解消したあとの再試行 |
+| `--review-current <stage>` | いつでも | 起動しない | **現在の成果物の再確認**。人間の修正を維持したまま判定し直す |
+| `--rework <stage>` | いつでも | 起動する | **通過済み stage のやり直し**。AIに作り直させる |
+
+`--retry-blocked` は `BLOCKED` 専用です。完成後の修正には使えません（最新が `BLOCKED` でなければ拒否されます）。
 
 ### マニュアル介入からの復帰
 
@@ -573,6 +667,14 @@ stage_g2_reviewer  = {feature_dir}/gates/
 stage_cp3_worker   = src/{app}/features/, tests/{app}/
 stage_cp3_reviewer = {feature_dir}/gates/, {feature_dir}/25_review_result.md
 
+# --- stage ごとに baseline 化する成果物（通過後の変更検出に使う） ---
+# その stage の判定対象そのものだけを書く。tasks.md（作業メモ）と
+# 25_review_result.md（レビュー結果）は baseline ではないので含めない。
+# CP1 は人間の承認が baseline を決めるため、ここではなく spec_artifact で判定する。
+stage_g1_artifacts  = {feature_dir}/21_design.md, {feature_dir}/22_flow.md
+stage_g2_artifacts  = {feature_dir}/23_test_plan.md, {feature_dir}/24_review_checklist.md
+stage_cp3_artifacts = src/{app}/features/{feature}.py, tests/{app}/features/test_{feature}.py
+
 # --- stage ごとに Worker が委譲する既存プロンプト（マニュアルモードの正本） ---
 stage_cp1_prompts  = prompts/create_feature_spec.md
 stage_g1_prompts   = prompts/create_function_design.md, prompts/create_function_call_flow.md
@@ -588,6 +690,7 @@ stage_cp3_prompts  = prompts/implement_feature.md
 - `spec_stage` と `spec_artifact` を変更する場合、`stage_<spec_stage>_worker` にその成果物が含まれているかを確認してください
 - **`human_gates` に stage を追加する場合は、対応する `approval_heading_<stage小文字>` と、Gate記録テンプレートの承認欄を同時に用意してください。** 欠けている場合、runner は `BLOCKED(state_error)` として停止します
 - `stage_*_worker` / `stage_*_reviewer` を広げる場合、上記「stage × role の変更範囲」の表と、対応する `prompts/*.md` の `## 変更してよいファイル` も同時に更新してください
+- **`stage_*_artifacts` に書いたファイルだけが、通過後の変更検出の対象です。** ここに無いファイルを変更しても検出されません。`stage_cp3_artifacts` の既定値は feature 1件ぶんの実装ファイルとテストファイルです。結合試験など複数ファイルを CP3 の成果物として扱うプロジェクトでは、ここを広げてください。ただし `src/{app}/features/` のようにディレクトリ単位へ広げると、**同じ app の別 feature を変更しただけでも変更ありと判定されます**
 - `model_*` と `ai_command` は利用者の環境に依存します。**リポジトリへコミットしたくない場合は `tools/feature_loop.local` へ書いてください**
 
 ---

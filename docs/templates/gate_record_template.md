@@ -23,6 +23,7 @@ req_covered:
 viewpoint_total:
 viewpoint_covered:
 spec_hash:
+artifacts_hash:
 review_independence: separate_context
 model_design:
 model_build:
@@ -47,6 +48,7 @@ triggered_by の値:
   HUMAN_NOTE    人間の自然文コメントによる再判定
   MANUAL        マニュアル介入からの復帰（--review-current / --spec-review）
   RETRY_BLOCKED BLOCKED からの明示的な再試行（--retry-blocked）
+  REWORK        通過済み stage の明示的なやり直し（--rework）
   RUNNER        runner 自身が停止を記録した
 
 spec_hash:
@@ -54,6 +56,12 @@ spec_hash:
   値は runner が計算して渡す。**自分で計算しない。渡された値をそのまま転記する。**
   製造開始時に runner が現在の 20_spec.md を再計算して照合するため、
   この値が誤っていると製造が始まらない（fail-safe）。
+
+artifacts_hash:
+  この stage が baseline 化する成果物の内容ハッシュ。全 stage で記入する。
+  値は runner が計算して渡す。**自分で計算しない。渡された値をそのまま転記する。**
+  次回の実行時、runner が再計算して照合し、
+  「Gate 通過後に成果物が変更されたか」を判定する。
 
 immutable のルール:
 - `verdict: IN_PROGRESS` の間だけ、このファイルへラウンドを追記する

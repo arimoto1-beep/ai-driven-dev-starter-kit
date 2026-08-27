@@ -42,12 +42,13 @@
 - stage: `CP1`（仕様レビュー）／ `G1` / `G2` / `CP3`（AI製造）
 - mode: `auto`（runner による通常実行）／ `manual`（マニュアル介入・仕様レビューの単独実行）
 - **spec_hash**: `仕様 stage（CP1）でのみ渡される。runner が計算した値`
+- **artifacts_hash**: `全 stage で渡される。runner が計算した、この stage の成果物の内容ハッシュ`
 - 対象機能フォルダ: `docs/<command_or_app_name>/features/<feature_name>/`
 - コマンド/アプリ名: `<command_or_app_name>`
 - 対象機能名: `<feature_name>`
 - Gate記録ファイル: `<対象機能フォルダ>/gates/<連番>_<タイムスタンプ>_<stage小文字>.md`
 - run_seq: `<連番>`
-- triggered_by: `INITIAL` / `RETURN` / `MANUAL` / `HUMAN_NOTE` / `RETRY_BLOCKED`
+- triggered_by: `INITIAL` / `RETURN` / `MANUAL` / `HUMAN_NOTE` / `RETRY_BLOCKED` / `REWORK`
 - triggered_by_record: `なければ空`
 - supersedes: `なければ空`
 - **human_gate**: `yes`（この stage で人間が停止する）／ `no`（AI Gate）
@@ -239,6 +240,14 @@ CP1 の PASS 判定は、要求数ではなく上記の仕様レビュー観点�
 - 値を変更・省略しないでください。製造開始時に runner が再計算して照合します
 - 誤った値を書くと製造が開始できなくなります（安全側に倒れる設計です）
 
+#### artifacts_hash の記録
+
+**渡された `artifacts_hash` の値を、そのまま front matter へ記録してください。全 stage で記録します。**
+
+- **自分で計算しないでください。** 値は runner が計算しています
+- これは「この stage の成果物が、Gate 通過後に変更されたか」を次回判定するための値です
+- 値を省略すると、次回 runner は「判定不能」として扱い、完成後の変更を検出できなくなります
+
 ### G1：設計・処理フロー
 
 問い：**この設計を前提として、テスト設計工程へ進めてよいか。**
@@ -415,6 +424,7 @@ run_seq: <連番>
 mode: auto
 recorded_by: reviewer
 spec_hash: <CP1 でのみ、渡された値をそのまま記録する。他 stage では空>
+artifacts_hash: <全 stage で、渡された値をそのまま記録する>
 verdict: PASS
 next_step: GO
 return_to:
@@ -545,7 +555,7 @@ CP3 の場合、Gate記録に加えて `<対象機能フォルダ>/25_review_res
 - 指定された出力先を AI 判断で変更しないでください
 - 収束していないのに `PASS` としないでください
 - 保証範囲が減っているのに `PASS` としないでください
-- **`spec_hash` を自分で計算しないでください。** 渡された値をそのまま記録します
+- **`spec_hash` / `artifacts_hash` を自分で計算しないでください。** 渡された値をそのまま記録します
 - **承認済み仕様に無い判断が下流成果物に持ち込まれているのを、見逃さないでください。** 「一般的にはこう」「既存実装がこう」「この方が自然」という理由での仕様追加は、`RETURN(CP1)` の対象です
 
 ---
