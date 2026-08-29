@@ -54,7 +54,7 @@ task promptが指定されていない作業の入口は、[`AGENTS.md`](../../A
 | [`project/40_testing_rules.md`](project/40_testing_rules.md) | テストの単位、検証方法、配置 |
 | [`project/50_ai_permissions.md`](project/50_ai_permissions.md) | AIの権限、保護対象、承認欄の場所 |
 | [`project/60_work_notes.md`](project/60_work_notes.md) | 作業メモの保存方法と運用 |
-| [`project/70_feature_loop.md`](project/70_feature_loop.md) | オートモード（stage、Gate、判定値、stage × role の変更範囲、モデル役割、Gate記録） |
+| [`project/70_feature_loop.md`](project/70_feature_loop.md) | オートモード（stage、Gate、判定値、stage × role の変更範囲、モデル選択、Gate記録） |
 
 ## 関連する入口
 

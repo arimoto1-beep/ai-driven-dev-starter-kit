@@ -734,22 +734,101 @@ def count_returns_to(root: Path, feature_dir: str, stage: str) -> int:
     return count
 
 
-# ---------------------------------------------------------------- モデル解決
+# ---------------------------------------------------------------- モデル選択
+
+DIFFICULTY_OFFSETS = {"easy": -1, "normal": 0, "hard": 1}
+DEFAULT_DIFFICULTY = "normal"
+DEFAULT_BASE_LEVEL = 2
+LEVEL_CLASSES = {1: "cheap", 2: "standard", 3: "strong"}
+MODEL_CLASSES = ("cheap", "standard", "strong")
 
 
-def resolve_model(config: dict[str, str], role: str, overrides: dict[str, str]) -> tuple[str, str]:
-    """role -> model class -> 実モデル。(クラス, 実モデル) を返す。
+def feature_difficulty(root: Path, config: dict[str, str], ctx: dict[str, str]) -> str:
+    """承認済み仕様 stage の Gate記録から feature 難易度を読む。
 
-    実モデルが未設定（プレースホルダ）の場合は空文字を返す。
+    判定するのは仕様レビューの Reviewer で、runner は読むだけ。
+    値を持たない Gate記録は `normal` として扱う（従来の記録を壊さない）。
     """
-    model_class = overrides.get(role) or config.get(f"role_{role}", "")
+    target = spec_path(root, config, ctx)
 
-    if not model_class:
-        raise SystemExit(f"role_{role} が設定にありません。")
+    if target is None or not target.exists():
+        return DEFAULT_DIFFICULTY
 
-    actual = config.get(f"model_{model_class}", "")
+    _, front = find_spec_approval(
+        root, config, ctx["feature_dir"], required_spec_hash=file_hash(target),
+    )
+    value = front.get("feature_difficulty", "")
 
-    return model_class, "" if is_placeholder(actual) else actual
+    return value if value in DIFFICULTY_OFFSETS else DEFAULT_DIFFICULTY
+
+
+def base_level(config: dict[str, str], prompt: str) -> int:
+    """プロンプト1本の基礎レベル。
+
+    設定が無い場合は既定値を使い、実行は止めない。設定漏れはテストで検出する。
+    """
+    try:
+        return int(config.get(f"base_level_{Path(prompt).stem}", ""))
+    except ValueError:
+        return DEFAULT_BASE_LEVEL
+
+
+def prompts_base_level(config: dict[str, str], prompts: str) -> int:
+    """1回の起動で複数プロンプトを使う場合は、最も高いものに合わせる。"""
+    levels = [base_level(config, item) for item in split_list(prompts)]
+
+    return max(levels) if levels else DEFAULT_BASE_LEVEL
+
+
+def level_class(level: int) -> str:
+    return LEVEL_CLASSES[min(3, max(1, level))]
+
+
+def actual_model(config: dict[str, str], model_class: str) -> str:
+    """モデルクラス -> 実モデル。未設定（プレースホルダ）なら空文字。"""
+    value = config.get(f"model_{model_class}", "")
+
+    return "" if is_placeholder(value) else value
+
+
+def select_model_classes(root: Path, config: dict[str, str], ctx: dict[str, str],
+                         stage: str, model_class: str) -> dict:
+    """Worker と Reviewer のモデルクラスを決める。
+
+    方式は2つだけ。
+      `--model-class` があれば manual、なければ auto（feature難易度 + 基礎レベル）。
+    """
+    worker_prompts = config.get(f"stage_{stage.lower()}_prompts", "")
+
+    # 仕様 stage を実行する時点では、難易度はまだ確定していない。
+    # 選択には normal を使い、判定そのものは、この stage の Reviewer が行う。
+    at_spec_stage = stage == spec_stage(config)
+    difficulty = (
+        DEFAULT_DIFFICULTY if at_spec_stage else feature_difficulty(root, config, ctx)
+    )
+
+    setup = {
+        "feature_difficulty": difficulty,
+        # 仕様 stage では Reviewer が判定するため、渡す値は空にする。
+        "recorded_difficulty": "" if at_spec_stage else difficulty,
+        "worker_prompts": worker_prompts,
+        "reviewer_prompts": REVIEWER_PROMPT,
+        "worker_base": prompts_base_level(config, worker_prompts),
+        "reviewer_base": base_level(config, REVIEWER_PROMPT),
+    }
+
+    if model_class:
+        setup.update(model_selection="manual",
+                     worker_class=model_class, reviewer_class=model_class)
+    else:
+        offset = DIFFICULTY_OFFSETS[difficulty]
+        setup.update(
+            model_selection="auto",
+            worker_class=level_class(setup["worker_base"] + offset),
+            reviewer_class=level_class(setup["reviewer_base"] + offset),
+        )
+
+    return setup
 
 
 # ---------------------------------------------------------------- 起動
@@ -787,8 +866,7 @@ def build_worker_instruction(stage: str, mode: str, ctx: dict[str, str],
 def build_reviewer_instruction(stage: str, ctx: dict[str, str], record: Path,
                                root: Path, seq: int, causality: dict[str, str],
                                violations: list[str], human_note: str,
-                               config: dict[str, str], model_class: str,
-                               human_gate: bool, mode: str,
+                               config: dict[str, str], setup: dict, mode: str,
                                spec_hash: str = "",
                                artifacts_hash: str = "") -> str:
     lines = [
@@ -806,9 +884,12 @@ def build_reviewer_instruction(stage: str, ctx: dict[str, str], record: Path,
         f"triggered_by: {causality['triggered_by']}",
         f"triggered_by_record: {causality['triggered_by_record']}",
         f"supersedes: {causality['supersedes']}",
-        f"human_gate: {'yes' if human_gate else 'no'}",
+        f"human_gate: {'yes' if setup['human_gate'] else 'no'}",
         f"review_independence: {config.get('review_independence', 'separate_context')}",
-        f"使用モデル区分: {model_class}",
+        f"feature_difficulty: {setup['recorded_difficulty']}",
+        f"worker_model_class: {setup['worker_class']}",
+        f"reviewer_model_class: {setup['reviewer_class']}",
+        f"model_selection: {setup['model_selection']}",
         f"guard_violations: {', '.join(violations) if violations else 'なし'}",
         f"human_note: {human_note}",
         "補足条件: なし",
@@ -931,6 +1012,10 @@ def cmd_status(root: Path, config: dict[str, str], ctx: dict[str, str]) -> int:
 
         state = stage_baseline_state(root, config, ctx, stage)
         show(f"  {stage:<4} {labels[state]}")
+
+    show()
+    show(f"モデル選択: auto（feature_difficulty="
+         f"{feature_difficulty(root, config, ctx)}）")
 
     stale = stale_stages(root, config, ctx)
 
@@ -1073,7 +1158,8 @@ def compute_causality(root: Path, feature_dir: str, stage: str,
 
 def write_runner_record(root: Path, ctx: dict[str, str], stage: str, reason: str,
                         detail: str, previous: Path | None,
-                        violations: list[str] | None = None) -> Path:
+                        violations: list[str] | None = None,
+                        setup: dict | None = None) -> Path:
     """runner 自身が処理継続を禁止した場合の BLOCKED記録を新規作成する。
 
     画面ではなくファイルが正式記録であるため、runner が止めた場合も記録を残す。
@@ -1084,9 +1170,10 @@ def write_runner_record(root: Path, ctx: dict[str, str], stage: str, reason: str
 
     seq = int(record.name.split("_", 1)[0])
     stamp = now().isoformat(timespec="seconds")
+    selection = setup or {}
 
     front = {
-        "schema": "gate_record/v1",
+        "schema": "gate_record/v2",
         "feature": f"{ctx['app']}/{ctx['feature']}",
         "gate": stage,
         "run_seq": seq,
@@ -1110,9 +1197,10 @@ def write_runner_record(root: Path, ctx: dict[str, str], stage: str, reason: str
         "viewpoint_total": "",
         "viewpoint_covered": "",
         "review_independence": "",
-        "model_design": "",
-        "model_build": "",
-        "model_review": "",
+        "feature_difficulty": selection.get("recorded_difficulty", ""),
+        "worker_model_class": selection.get("worker_class", ""),
+        "reviewer_model_class": selection.get("reviewer_class", ""),
+        "model_selection": selection.get("model_selection", ""),
         "artifacts": "",
         "human_decision_required": 1,
     }
@@ -1167,8 +1255,8 @@ def write_runner_record(root: Path, ctx: dict[str, str], stage: str, reason: str
     return record
 
 
-def stage_setup(config: dict[str, str], ctx: dict[str, str], stage: str,
-                overrides: dict[str, str]) -> dict:
+def stage_setup(root: Path, config: dict[str, str], ctx: dict[str, str], stage: str,
+                model_class: str = "") -> dict:
     key = stage.lower()
 
     worker_allowed = expand(config.get(f"stage_{key}_worker", ""), ctx)
@@ -1177,23 +1265,16 @@ def stage_setup(config: dict[str, str], ctx: dict[str, str], stage: str,
     if not worker_allowed or not reviewer_allowed:
         raise SystemExit(f"stage_{key}_worker / stage_{key}_reviewer が設定にありません。")
 
-    worker_role = config.get(f"stage_{key}_worker_role", "design")
-    reviewer_role = config.get("reviewer_role", "review")
-
-    worker_class, worker_model = resolve_model(config, worker_role, overrides)
-    reviewer_class, reviewer_model = resolve_model(config, reviewer_role, overrides)
-
-    return {
+    setup = select_model_classes(root, config, ctx, stage, model_class)
+    setup.update({
         "worker_allowed": worker_allowed,
         "reviewer_allowed": reviewer_allowed,
-        "worker_role": worker_role,
-        "reviewer_role": reviewer_role,
-        "worker_class": worker_class,
-        "worker_model": worker_model,
-        "reviewer_class": reviewer_class,
-        "reviewer_model": reviewer_model,
+        "worker_model": actual_model(config, setup["worker_class"]),
+        "reviewer_model": actual_model(config, setup["reviewer_class"]),
         "human_gate": stage in split_list(config.get("human_gates", "")),
-    }
+    })
+
+    return setup
 
 
 def run_worker(root: Path, config: dict[str, str], ctx: dict[str, str], stage: str,
@@ -1249,7 +1330,7 @@ def run_reviewer(root: Path, config: dict[str, str], ctx: dict[str, str], stage:
 
     instruction = build_reviewer_instruction(
         stage, ctx, record, root, seq, causality, violations, human_note,
-        config, setup["reviewer_class"], setup["human_gate"], review_mode,
+        config, setup, review_mode,
         current_spec_hash(root, config, ctx, stage),
         current_artifacts_hash(root, config, ctx, stage),
     )
@@ -1275,10 +1356,32 @@ def run_reviewer(root: Path, config: dict[str, str], ctx: dict[str, str], stage:
     return True, own
 
 
+def describe_selection(setup: dict) -> str:
+    """モデル選択の要約1行。"""
+    if setup["model_selection"] == "manual":
+        return "モデル選択: manual（--model-class による指定）"
+
+    return f"モデル選択: auto（feature_difficulty={setup['feature_difficulty']}）"
+
+
+def describe_side(setup: dict, side: str) -> str:
+    """Worker / Reviewer 1つ分の選択結果。"""
+    parts = []
+
+    if setup["model_selection"] == "auto":
+        parts.append(f"base={setup[f'{side}_base']}")
+
+    parts.append(f"class={setup[f'{side}_class'] or '(なし)'}")
+    parts.append(f"model={setup[f'{side}_model'] or '(未設定)'}")
+
+    return "  ".join(parts)
+
+
 def show_dry_run(root: Path, config: dict[str, str], ctx: dict[str, str], stage: str,
                  kind: str, mode: str, setup: dict, record: Path,
                  causality: dict[str, str], human_note: str) -> None:
     show(f"--- dry-run: stage={stage} kind={kind} mode={mode}")
+    show(describe_selection(setup))
 
     if kind in ("run", "fix", "retry", "rework"):
         instruction = build_worker_instruction(
@@ -1290,15 +1393,15 @@ def show_dry_run(root: Path, config: dict[str, str], ctx: dict[str, str], stage:
         except SystemExit as error:
             argv = [f"(組み立て不可: {error})"]
 
-        show(f"Worker   role={setup['worker_role']} class={setup['worker_class']} "
-             f"model={setup['worker_model'] or '(未設定)'}")
+        show(f"Worker   {describe_side(setup, 'worker')}")
+        show(f"  使用prompt: {setup['worker_prompts'] or '(未設定)'}")
         show(f"  変更してよい: {', '.join(setup['worker_allowed'])}")
         show(f"  argv: {argv}")
     else:
         show("Worker   起動しない（現在の成果物をそのまま Reviewer へ渡す）")
 
-    show(f"Reviewer role={setup['reviewer_role']} class={setup['reviewer_class']} "
-         f"model={setup['reviewer_model'] or '(未設定)'}")
+    show(f"Reviewer {describe_side(setup, 'reviewer')}")
+    show(f"  使用prompt: {setup['reviewer_prompts']}")
     show(f"  変更してよい: {', '.join(setup['reviewer_allowed'])}")
     show(f"  human_gate: {'yes' if setup['human_gate'] else 'no'}")
     show(f"  Gate記録: {rel(root, record)}")
@@ -1317,13 +1420,19 @@ def show_dry_run(root: Path, config: dict[str, str], ctx: dict[str, str], stage:
 
 
 def execute(root: Path, config: dict[str, str], ctx: dict[str, str],
-            action: Action, overrides: dict[str, str], dry_run: bool) -> Path | None:
+            action: Action, dry_run: bool,
+            model_class: str = "") -> Path | None:
     """1回分の実行。Gate記録のパスを返す。失敗時は None。"""
     stage = action.stage
-    setup = stage_setup(config, ctx, stage, overrides)
+    setup = stage_setup(root, config, ctx, stage, model_class)
 
     with_worker = action.kind in ("run", "fix", "retry", "rework")
     mode = "fix" if action.kind == "fix" else "create"
+
+    if not with_worker:
+        # Worker を起動しない実行では、使用した Worker のモデルクラスは存在しない。
+        setup["worker_class"] = ""
+        setup["worker_model"] = ""
 
     if action.kind == "fix":
         record = action.record
@@ -1357,7 +1466,7 @@ def execute(root: Path, config: dict[str, str], ctx: dict[str, str],
             write_runner_record(
                 root, ctx, stage, "state_error",
                 "Worker が異常終了しました。AI CLI の設定と実行環境を確認してください。",
-                action.record,
+                action.record, setup=setup,
             )
             return None
 
@@ -1372,7 +1481,7 @@ def execute(root: Path, config: dict[str, str], ctx: dict[str, str],
         write_runner_record(
             root, ctx, stage, "state_error",
             "Reviewer が異常終了しました。AI CLI の設定と実行環境を確認してください。",
-            action.record,
+            action.record, setup=setup,
         )
         return None
 
@@ -1381,7 +1490,7 @@ def execute(root: Path, config: dict[str, str], ctx: dict[str, str],
             root, ctx, stage, "guard_violation",
             "Reviewer が、許可されていないファイルを変更しました。Reviewer は Gate記録"
             "（CP3 では 25_review_result.md も）以外を変更できません。",
-            record, own,
+            record, own, setup=setup,
         )
         return None
 
@@ -1389,7 +1498,7 @@ def execute(root: Path, config: dict[str, str], ctx: dict[str, str],
         write_runner_record(
             root, ctx, stage, "state_error",
             f"Reviewer が Gate記録を作成しませんでした: {rel(root, record)}",
-            action.record,
+            action.record, setup=setup,
         )
         return None
 
@@ -1451,9 +1560,10 @@ def resolve_retry_action(root: Path, config: dict[str, str], feature_dir: str) -
 
 
 def cmd_run(root: Path, config: dict[str, str], ctx: dict[str, str],
-            overrides: dict[str, str], once: bool, dry_run: bool,
+            once: bool, dry_run: bool,
             review_current: str = "", retry_blocked: bool = False,
-            spec_review: bool = False, rework: str = "") -> int:
+            spec_review: bool = False, rework: str = "",
+            model_class: str = "") -> int:
     feature_dir = ctx["feature_dir"]
     stages = split_list(config.get("stages", ""))
     max_rounds = int(config.get("max_rounds", "3"))
@@ -1471,6 +1581,12 @@ def cmd_run(root: Path, config: dict[str, str], ctx: dict[str, str],
 
     if len(exclusive) > 1:
         raise SystemExit(f"{' と '.join(exclusive)} は同時に指定できません。")
+
+    if model_class and model_class not in MODEL_CLASSES:
+        raise SystemExit(
+            f"--model-class の値が不正です: {model_class!r}"
+            f"（{' / '.join(MODEL_CLASSES)} のいずれか）"
+        )
 
     # --- 仕様レビューの単独実行：製造 runner とは独立して何度でも回せる
     if spec_review:
@@ -1499,7 +1615,7 @@ def cmd_run(root: Path, config: dict[str, str], ctx: dict[str, str],
             )
 
         action = Action("review_only", review_current, latest_record(root, feature_dir))
-        record = execute(root, config, ctx, action, overrides, dry_run)
+        record = execute(root, config, ctx, action, dry_run, model_class)
 
         if dry_run:
             return 0
@@ -1624,7 +1740,7 @@ def cmd_run(root: Path, config: dict[str, str], ctx: dict[str, str],
                     show(line)
                 return 1
 
-        record = execute(root, config, ctx, action, overrides, dry_run)
+        record = execute(root, config, ctx, action, dry_run, model_class)
 
         if dry_run:
             return 0
@@ -1691,25 +1807,16 @@ def main() -> None:
         help="仕様書（20_spec.md）のAIレビューだけを単独実行する。"
         "製造は開始しない。何度でも実行できる",
     )
-    parser.add_argument("--role-design", help="design のモデルクラスを上書きする")
-    parser.add_argument("--role-build", help="build のモデルクラスを上書きする")
-    parser.add_argument("--role-review", help="review のモデルクラスを上書きする")
-
+    parser.add_argument(
+        "--model-class",
+        choices=MODEL_CLASSES,
+        help="この実行だけモデルクラスを固定する（Worker / Reviewer とも）",
+    )
     args = parser.parse_args()
 
     root = repo_root()
     config = read_config(root)
     ctx = build_context(root, args.feature)
-
-    overrides = {
-        role: value
-        for role, value in (
-            ("design", args.role_design),
-            ("build", args.role_build),
-            ("review", args.role_review),
-        )
-        if value
-    }
 
     if args.history:
         raise SystemExit(cmd_history(root, ctx))
@@ -1719,9 +1826,9 @@ def main() -> None:
 
     raise SystemExit(
         cmd_run(
-            root, config, ctx, overrides, args.once, args.dry_run,
+            root, config, ctx, args.once, args.dry_run,
             args.review_current or "", args.retry_blocked, args.spec_review,
-            args.rework or "",
+            args.rework or "", args.model_class or "",
         )
     )
 

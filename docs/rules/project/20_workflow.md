@@ -324,4 +324,4 @@ Step 7・8 の結果の報告項目は `docs/rules/core/50_records_and_reporting
 - 成果物の配置 → `10_document_structure.md`
 - レビュー結果の評価値 → `25_review_policy.md`
 - テストの実行方法 → `40_testing_rules.md`
-- オートモード（stage、Gate、判定値、モデル役割、Gate記録） → `70_feature_loop.md`
+- オートモード（stage、Gate、判定値、モデル選択、Gate記録） → `70_feature_loop.md`

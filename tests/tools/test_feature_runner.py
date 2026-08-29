@@ -18,16 +18,16 @@ import feature_runner as fr  # noqa: E402
 
 
 def test_parse_flat_reads_key_value():
-    text = "role_design = standard\nrole_build = cheap\n"
+    text = "base_level_review_stage = 2\nmax_rounds = 3\n"
     assert fr.parse_flat(text, "=") == {
-        "role_design": "standard",
-        "role_build": "cheap",
+        "base_level_review_stage": "2",
+        "max_rounds": "3",
     }
 
 
 def test_parse_flat_skips_comments_and_blank_lines():
-    text = "# コメント\n\nrole_review = standard\n"
-    assert fr.parse_flat(text, "=") == {"role_review": "standard"}
+    text = "# コメント\n\nmax_rounds = 3\n"
+    assert fr.parse_flat(text, "=") == {"max_rounds": "3"}
 
 
 def test_parse_flat_splits_only_on_first_separator():
@@ -48,8 +48,8 @@ def test_split_list_drops_empty_items():
 
 
 def test_extract_fenced_block():
-    text = "説明\n\n```feature_loop\nrole_design = standard\n```\n\n続き\n"
-    assert fr.extract_fenced_block(text, "feature_loop").strip() == "role_design = standard"
+    text = "説明\n\n```feature_loop\nmax_rounds = 3\n```\n\n続き\n"
+    assert fr.extract_fenced_block(text, "feature_loop").strip() == "max_rounds = 3"
 
 
 def test_extract_fenced_block_returns_empty_when_missing():
@@ -57,12 +57,18 @@ def test_extract_fenced_block_returns_empty_when_missing():
 
 
 def test_read_config_from_actual_rule_document():
-    """実際の 70_feature_loop.md から設定を読めること。"""
+    """実際の 70_feature_loop.md から設定を読めること。
+
+    ここで確認する値は、すべてルール文書の設定ブロック側で定める項目にする。
+    `model_*` や `ai_command` のようなローカル上書き対象を混ぜると、
+    利用者の `feature_loop.local` の内容でテスト結果が変わってしまう。
+    """
     config = fr.read_config(REPO_ROOT)
 
     assert config["stages"] == "CP1, G1, G2, CP3"
     assert config["human_gates"] == "CP1, CP3"
-    assert config["role_build"] == "cheap"
+    assert config["base_level_implement_feature"] == "1"
+    assert config["base_level_review_stage"] == "2"
     assert "stage_cp3_reviewer" in config
 
 
@@ -507,28 +513,63 @@ def test_worker_scope_never_includes_gates():
         assert fr.is_allowed(record, worker) is False, f"stage={stage}"
 
 
-# ---------------------------------------------------------------- モデル解決
+# ---------------------------------------------------------------- モデル選択（部品）
 
 
-def test_resolve_model_maps_role_to_actual_model():
-    config = {"role_build": "cheap", "model_cheap": "model-a"}
+def test_base_level_reads_prompt_file_name():
+    config = {"base_level_implement_feature": "1"}
 
-    assert fr.resolve_model(config, "build", {}) == ("cheap", "model-a")
-
-
-def test_resolve_model_applies_override():
-    config = {"role_design": "standard", "model_standard": "model-b", "model_strong": "model-c"}
-
-    assert fr.resolve_model(config, "design", {"design": "strong"}) == ("strong", "model-c")
+    assert fr.base_level(config, "prompts/implement_feature.md") == 1
 
 
-def test_resolve_model_defaults_match_cost_intent():
-    """既定は design=standard / build=cheap / review=standard であること。"""
+def test_base_level_defaults_when_undefined():
+    """未定義でも実行は止めない（設定漏れはテストで検出する）。"""
+    assert fr.base_level({}, "prompts/unknown_prompt.md") == fr.DEFAULT_BASE_LEVEL
+    assert fr.DEFAULT_BASE_LEVEL == 2
+
+
+def test_base_level_defaults_when_not_a_number():
+    assert fr.base_level({"base_level_x": "たかい"}, "prompts/x.md") == 2
+
+
+def test_prompts_base_level_takes_maximum():
+    """1回の起動で複数プロンプトを使う場合は、最も高いものに合わせる。"""
+    config = {"base_level_a": "2", "base_level_b": "1"}
+
+    assert fr.prompts_base_level(config, "prompts/a.md, prompts/b.md") == 2
+
+
+def test_prompts_base_level_without_prompts():
+    assert fr.prompts_base_level({}, "") == fr.DEFAULT_BASE_LEVEL
+
+
+def test_level_class_rounds_into_range():
+    assert fr.level_class(0) == "cheap"
+    assert fr.level_class(1) == "cheap"
+    assert fr.level_class(2) == "standard"
+    assert fr.level_class(3) == "strong"
+    assert fr.level_class(4) == "strong"
+
+
+def test_actual_model_treats_placeholder_as_unset():
+    assert fr.actual_model({"model_cheap": "<記入してください>"}, "cheap") == ""
+    assert fr.actual_model({"model_cheap": "model-a"}, "cheap") == "model-a"
+
+
+def test_every_stage_prompt_has_a_base_level():
+    """stage_*_prompts に列挙したプロンプトへ base_level_* が定義されていること。
+
+    実行時は既定値で継続するため、設定漏れはここでしか気づけない。
+    """
     config = fr.read_config(REPO_ROOT)
+    prompts = [fr.REVIEWER_PROMPT]
 
-    assert config["role_design"] == "standard"
-    assert config["role_build"] == "cheap"
-    assert config["role_review"] == "standard"
+    for stage in fr.split_list(config["stages"]):
+        prompts += fr.split_list(config.get(f"stage_{stage.lower()}_prompts", ""))
+
+    for prompt in prompts:
+        key = f"base_level_{Path(prompt).stem}"
+        assert key in config, f"{prompt} に対応する {key} がありません"
 
 
 def test_rule_document_contains_no_vendor_model_names():
@@ -573,9 +614,13 @@ def test_is_placeholder():
 
 
 SANDBOX_CONFIG = """```feature_loop
-role_design    = standard
-role_build     = cheap
-role_review    = standard
+base_level_create_feature_spec       = 2
+base_level_create_function_design    = 2
+base_level_create_function_call_flow = 1
+base_level_create_test_design        = 2
+base_level_create_review_checklist   = 2
+base_level_implement_feature         = 1
+base_level_review_stage              = 2
 model_cheap    = m-cheap
 model_standard = m-standard
 model_strong   = m-strong
@@ -592,11 +637,6 @@ approval_heading_g1  = 設計進行承認
 approval_heading_g2  = 実装工程進行承認
 approval_heading_cp3 = 受け入れ判断
 human_note_heading   = 気になる点
-stage_cp1_worker_role  = design
-stage_g1_worker_role = design
-stage_g2_worker_role  = design
-stage_cp3_worker_role = build
-reviewer_role         = review
 stage_cp1_worker    = {feature_dir}/20_spec.md
 stage_cp1_reviewer  = {feature_dir}/gates/
 stage_g1_worker   = {feature_dir}/21_design.md, {feature_dir}/22_flow.md
@@ -609,7 +649,7 @@ stage_g1_artifacts  = {feature_dir}/21_design.md, {feature_dir}/22_flow.md
 stage_g2_artifacts  = {feature_dir}/23_test_plan.md
 stage_cp3_artifacts = src/{app}/features/{feature}.py
 stage_cp1_prompts   = prompts/create_feature_spec.md
-stage_g1_prompts  = prompts/create_function_design.md
+stage_g1_prompts  = prompts/create_function_design.md, prompts/create_function_call_flow.md
 stage_g2_prompts   = prompts/create_test_design.md
 stage_cp3_prompts  = prompts/implement_feature.md
 ```
@@ -660,6 +700,7 @@ class FakeAI:
 
     def __call__(self, root, argv):
         info = parse_instruction(argv[1])
+        info["_model"] = argv[2] if len(argv) > 2 else ""
         self.calls.append(info)
 
         if fr.REVIEWER_PROMPT in info["prompt"]:
@@ -687,13 +728,17 @@ class FakeAI:
         return [c for c in self.calls if fr.REVIEWER_PROMPT in c["prompt"]]
 
 
-def approve_spec(root, config, ctx, name="0001_x_cp1.md", seq=1):
-    """承認済みの仕様 baseline（CP1 記録）を作る。製造 stage のテスト前提。"""
+def approve_spec(root, config, ctx, name="0001_x_cp1.md", seq=1, difficulty=None):
+    """承認済みの仕様 baseline（CP1 記録）を作る。製造 stage のテスト前提。
+
+    `difficulty` を省略した場合、feature_difficulty を持たない従来の記録になる。
+    """
     target = fr.spec_path(root, config, ctx)
+    extra = {} if difficulty is None else {"feature_difficulty": difficulty}
     record = write_record(
         root / ctx["feature_dir"] / "gates", name,
         verdict="PASS", next_step="GO", gate="CP1", run_seq=seq,
-        recorded_by="reviewer", spec_hash=fr.file_hash(target),
+        recorded_by="reviewer", spec_hash=fr.file_hash(target), **extra,
     )
     record.write_text(
         record.read_text(encoding="utf-8") + approval("仕様承認", True),
@@ -716,7 +761,7 @@ def test_max_rounds_exceeded_writes_blocked_record(sandbox, monkeypatch):
     })
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    code = fr.cmd_run(root, config, ctx, {}, once=False, dry_run=False)
+    code = fr.cmd_run(root, config, ctx, once=False, dry_run=False)
 
     assert code == 1
 
@@ -736,7 +781,7 @@ def test_max_returns_exceeded_writes_blocked_record(sandbox, monkeypatch):
 
     monkeypatch.setattr(fr, "run_ai", FakeAI(root, lambda info: {}))
 
-    code = fr.cmd_run(root, config, ctx, {}, once=False, dry_run=False)
+    code = fr.cmd_run(root, config, ctx, once=False, dry_run=False)
 
     assert code == 1
 
@@ -763,7 +808,7 @@ def test_reviewer_guard_violation_writes_blocked_record(sandbox, monkeypatch):
     )
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    code = fr.cmd_run(root, config, ctx, {}, once=True, dry_run=False)
+    code = fr.cmd_run(root, config, ctx, once=True, dry_run=False)
 
     assert code == 1
 
@@ -781,7 +826,7 @@ def test_state_error_writes_blocked_record(sandbox, monkeypatch):
 
     monkeypatch.setattr(fr, "run_ai", FakeAI(root, lambda info: {}))
 
-    code = fr.cmd_run(root, config, ctx, {}, once=False, dry_run=False)
+    code = fr.cmd_run(root, config, ctx, once=False, dry_run=False)
 
     assert code == 1
 
@@ -810,7 +855,7 @@ def test_human_note_runs_reviewer_without_worker(sandbox, monkeypatch):
     })
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    fr.cmd_run(root, config, ctx, {}, once=True, dry_run=False)
+    fr.cmd_run(root, config, ctx, once=True, dry_run=False)
 
     assert fake.worker_calls() == [], "人間コメントの再判定で Worker を起動してはいけない"
     assert len(fake.reviewer_calls()) == 1
@@ -845,7 +890,7 @@ def test_review_current_skips_worker(sandbox, monkeypatch):
     })
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    code = fr.cmd_run(root, config, ctx, {}, once=False, dry_run=False, review_current="G2")
+    code = fr.cmd_run(root, config, ctx, once=False, dry_run=False, review_current="G2")
 
     assert code == 0
     assert fake.worker_calls() == [], "--review-current で Worker を起動してはいけない"
@@ -876,7 +921,7 @@ def test_review_current_returns_to_auto_mode(sandbox, monkeypatch):
     })
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    fr.cmd_run(root, config, ctx, {}, once=False, dry_run=False, review_current="G2")
+    fr.cmd_run(root, config, ctx, once=False, dry_run=False, review_current="G2")
 
     action = fr.resolve_action(root, config, ctx["feature_dir"])
 
@@ -887,7 +932,7 @@ def test_review_current_rejects_unknown_stage(sandbox):
     root, config, ctx = sandbox
 
     with pytest.raises(SystemExit):
-        fr.cmd_run(root, config, ctx, {}, once=False, dry_run=False, review_current="G9")
+        fr.cmd_run(root, config, ctx, once=False, dry_run=False, review_current="G9")
 
 
 def test_normal_run_invokes_worker_then_reviewer(sandbox, monkeypatch):
@@ -900,7 +945,7 @@ def test_normal_run_invokes_worker_then_reviewer(sandbox, monkeypatch):
     })
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    fr.cmd_run(root, config, ctx, {}, once=True, dry_run=False)
+    fr.cmd_run(root, config, ctx, once=True, dry_run=False)
 
     assert fake.prompts_used() == [
         f"{fr.WORKER_PROMPT} を参照してください。",
@@ -922,7 +967,7 @@ def test_reviewer_receives_human_gate_flag(sandbox, monkeypatch):
     })
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    fr.cmd_run(root, g1_config, ctx, {}, once=True, dry_run=False)
+    fr.cmd_run(root, g1_config, ctx, once=True, dry_run=False)
 
     assert fake.reviewer_calls()[0]["stage"] == "G1"
     assert fake.reviewer_calls()[0]["human_gate"] == "yes"
@@ -980,7 +1025,7 @@ def test_spec_review_runs_reviewer_only(sandbox, monkeypatch):
     })
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    code = fr.cmd_run(root, config, ctx, {}, once=False, dry_run=False, spec_review=True)
+    code = fr.cmd_run(root, config, ctx, once=False, dry_run=False, spec_review=True)
 
     assert code == 0
     assert fake.worker_calls() == [], "仕様レビューで Worker を起動してはいけない"
@@ -1003,7 +1048,7 @@ def test_spec_review_can_run_repeatedly(sandbox, monkeypatch):
     monkeypatch.setattr(fr, "run_ai", fake)
 
     for _ in range(3):
-        fr.cmd_run(root, config, ctx, {}, once=False, dry_run=False, spec_review=True)
+        fr.cmd_run(root, config, ctx, once=False, dry_run=False, spec_review=True)
 
     records = fr.list_records(root, ctx["feature_dir"])
 
@@ -1022,7 +1067,7 @@ def test_spec_review_blocked_does_not_reach_manufacturing(sandbox, monkeypatch):
     })
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    fr.cmd_run(root, config, ctx, {}, once=False, dry_run=False, spec_review=True)
+    fr.cmd_run(root, config, ctx, once=False, dry_run=False, spec_review=True)
 
     # 製造 stage は一度も起動していない
     assert all(call["stage"] == "CP1" for call in fake.calls)
@@ -1037,7 +1082,7 @@ def test_spec_review_rejected_without_spec(sandbox):
     (root / ctx["feature_dir"] / "20_spec.md").unlink()
 
     with pytest.raises(SystemExit) as error:
-        fr.cmd_run(root, config, ctx, {}, once=False, dry_run=False, spec_review=True)
+        fr.cmd_run(root, config, ctx, once=False, dry_run=False, spec_review=True)
 
     assert "仕様書" in str(error.value)
 
@@ -1046,7 +1091,7 @@ def test_spec_review_is_exclusive_with_other_modes(sandbox):
     root, config, ctx = sandbox
 
     with pytest.raises(SystemExit):
-        fr.cmd_run(root, config, ctx, {}, once=False, dry_run=False,
+        fr.cmd_run(root, config, ctx, once=False, dry_run=False,
                    spec_review=True, retry_blocked=True)
 
 
@@ -1074,7 +1119,7 @@ def test_preflight_blocks_without_human_approval(sandbox, monkeypatch):
     fake = FakeAI(root, lambda info: {})
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    code = fr.cmd_run(root, config, ctx, {}, once=False, dry_run=False)
+    code = fr.cmd_run(root, config, ctx, once=False, dry_run=False)
 
     assert code == 0, "承認待ちは異常停止ではない"
     assert fake.calls == [], "承認前に製造 stage を起動してはいけない"
@@ -1096,7 +1141,7 @@ def test_preflight_blocks_when_spec_changed_after_approval(sandbox, monkeypatch)
     fake = FakeAI(root, lambda info: {})
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    code = fr.cmd_run(root, config, ctx, {}, once=False, dry_run=False)
+    code = fr.cmd_run(root, config, ctx, once=False, dry_run=False)
 
     assert code == 1
     assert fake.calls == [], "baseline がずれた状態で製造してはいけない"
@@ -1124,7 +1169,7 @@ def test_preflight_blocks_when_approval_has_no_spec_hash(sandbox, monkeypatch):
     fake = FakeAI(root, lambda info: {})
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    assert fr.cmd_run(root, config, ctx, {}, once=False, dry_run=False) == 1
+    assert fr.cmd_run(root, config, ctx, once=False, dry_run=False) == 1
     assert fake.calls == []
 
 
@@ -1139,7 +1184,7 @@ def test_preflight_passes_with_approved_matching_baseline(sandbox, monkeypatch):
     })
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    code = fr.cmd_run(root, config, ctx, {}, once=True, dry_run=False)
+    code = fr.cmd_run(root, config, ctx, once=True, dry_run=False)
 
     assert code == 0
     assert fake.worker_calls()[0]["stage"] == "G1"
@@ -1238,7 +1283,7 @@ def test_return_to_spec_stage_waits_for_reapproval(sandbox, monkeypatch):
     })
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    fr.cmd_run(root, config, ctx, {}, once=True, dry_run=False)
+    fr.cmd_run(root, config, ctx, once=True, dry_run=False)
 
     after = fr.resolve_action(root, config, ctx["feature_dir"])
     assert (after.kind, after.stage) == ("await_human", "CP1")
@@ -1267,7 +1312,7 @@ def test_manufacturing_worker_cannot_touch_approved_spec(sandbox, monkeypatch):
 
     monkeypatch.setattr(fr, "run_ai", rewrite_spec)
 
-    fr.cmd_run(root, config, ctx, {}, once=True, dry_run=False)
+    fr.cmd_run(root, config, ctx, once=True, dry_run=False)
 
     # Reviewer へ違反として渡っている
     front = latest_front(root, ctx)
@@ -1305,7 +1350,7 @@ def test_normal_run_does_not_auto_resume_from_blocked(sandbox, monkeypatch):
     fake = FakeAI(root, lambda info: {})
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    code = fr.cmd_run(root, config, ctx, {}, once=False, dry_run=False)
+    code = fr.cmd_run(root, config, ctx, once=False, dry_run=False)
 
     assert code == 1
     assert fake.calls == [], "BLOCKED のまま AI を起動してはいけない"
@@ -1338,7 +1383,7 @@ def test_retry_blocked_reruns_worker_and_reviewer(sandbox, monkeypatch):
     })
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    code = fr.cmd_run(root, config, ctx, {}, once=True, dry_run=False, retry_blocked=True)
+    code = fr.cmd_run(root, config, ctx, once=True, dry_run=False, retry_blocked=True)
 
     assert code == 0
     assert len(fake.worker_calls()) == 1
@@ -1359,7 +1404,7 @@ def test_retry_preserves_original_blocked_record(sandbox, monkeypatch):
     })
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    fr.cmd_run(root, config, ctx, {}, once=True, dry_run=False, retry_blocked=True)
+    fr.cmd_run(root, config, ctx, once=True, dry_run=False, retry_blocked=True)
 
     assert original.exists()
     assert original.read_text(encoding="utf-8") == before
@@ -1377,7 +1422,7 @@ def test_retry_creates_new_record_number(sandbox, monkeypatch):
     })
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    fr.cmd_run(root, config, ctx, {}, once=True, dry_run=False, retry_blocked=True)
+    fr.cmd_run(root, config, ctx, once=True, dry_run=False, retry_blocked=True)
 
     records = fr.list_records(root, ctx["feature_dir"])
 
@@ -1400,7 +1445,7 @@ def test_retry_records_causality_to_blocked_record(sandbox, monkeypatch):
     })
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    fr.cmd_run(root, config, ctx, {}, once=True, dry_run=False, retry_blocked=True)
+    fr.cmd_run(root, config, ctx, once=True, dry_run=False, retry_blocked=True)
 
     front = latest_front(root, ctx)
 
@@ -1458,7 +1503,7 @@ def test_retry_does_not_run_ai_when_rejected(sandbox, monkeypatch):
     monkeypatch.setattr(fr, "run_ai", fake)
 
     with pytest.raises(SystemExit):
-        fr.cmd_run(root, config, ctx, {}, once=True, dry_run=False, retry_blocked=True)
+        fr.cmd_run(root, config, ctx, once=True, dry_run=False, retry_blocked=True)
 
     assert fake.calls == []
 
@@ -1467,7 +1512,7 @@ def test_retry_and_review_current_are_mutually_exclusive(sandbox):
     root, config, ctx = sandbox
 
     with pytest.raises(SystemExit):
-        fr.cmd_run(root, config, ctx, {}, once=False, dry_run=False,
+        fr.cmd_run(root, config, ctx, once=False, dry_run=False,
                    review_current="G2", retry_blocked=True)
 
 
@@ -1482,7 +1527,7 @@ def test_retry_continues_into_normal_auto_mode(sandbox, monkeypatch):
     })
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    fr.cmd_run(root, config, ctx, {}, once=True, dry_run=False, retry_blocked=True)
+    fr.cmd_run(root, config, ctx, once=True, dry_run=False, retry_blocked=True)
 
     action = fr.resolve_action(root, config, ctx["feature_dir"])
 
@@ -1501,7 +1546,7 @@ def test_retry_does_not_pass_blocked_reason_as_human_note(sandbox, monkeypatch):
     })
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    fr.cmd_run(root, config, ctx, {}, once=True, dry_run=False, retry_blocked=True)
+    fr.cmd_run(root, config, ctx, once=True, dry_run=False, retry_blocked=True)
 
     assert fake.reviewer_calls()[0]["human_note"] == ""
 
@@ -1513,39 +1558,279 @@ def test_retry_dry_run_shows_worker_without_executing(sandbox, monkeypatch):
     fake = FakeAI(root, lambda info: {})
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    code = fr.cmd_run(root, config, ctx, {}, once=True, dry_run=True, retry_blocked=True)
+    code = fr.cmd_run(root, config, ctx, once=True, dry_run=True, retry_blocked=True)
 
     assert code == 0
     assert fake.calls == []
     assert len(fr.list_records(root, ctx["feature_dir"])) == 1
 
 
-def test_worker_receives_cheap_model_at_cp3(sandbox, monkeypatch):
-    """CP3 の Worker に build ロール（既定 cheap）が割り当たること。"""
-    root, config, ctx = sandbox
-    gates = root / ctx["feature_dir"] / "gates"
+# ---------------------------------------------------------------- モデル選択（ループ全体）
 
-    approve_spec(root, config, ctx)
-    write_record(gates, "0002_x_g2.md", verdict="PASS", gate="G2", run_seq=2)
 
-    fake = FakeAI(root, lambda info: {
+def passing_reviewer(info):
+    return {
         "gate": info["stage"], "run_seq": info["run_seq"], "recorded_by": "reviewer",
         "verdict": "PASS", "next_step": "GO",
-    })
+    }
+
+
+def ready_for(root, config, ctx, stage, difficulty=None):
+    """その stage を次に実行する状態を作る。"""
+    gates = root / ctx["feature_dir"] / "gates"
+
+    if stage == "CP1":
+        return
+
+    approve_spec(root, config, ctx, difficulty=difficulty)
+
+    if stage == "G2":
+        write_record(gates, "0002_x_g1.md", verdict="PASS", gate="G1", run_seq=2)
+    elif stage == "CP3":
+        write_record(gates, "0002_x_g2.md", verdict="PASS", gate="G2", run_seq=2)
+
+
+def run_one(root, config, ctx, monkeypatch, **kwargs):
+    fake = FakeAI(root, passing_reviewer)
     monkeypatch.setattr(fr, "run_ai", fake)
-
-    fr.cmd_run(root, config, ctx, {}, once=True, dry_run=False)
-
-    worker = fake.worker_calls()[0]
-    assert worker["stage"] == "CP3"
-    assert worker["使用モデル区分"] == "cheap"
-    assert fake.reviewer_calls()[0]["使用モデル区分"] == "standard"
+    fr.cmd_run(root, config, ctx, once=True, dry_run=False, **kwargs)
+    return fake
 
 
-def test_resolve_model_treats_placeholder_as_unset():
-    config = {"role_build": "cheap", "model_cheap": "<記入してください>"}
+# 基礎レベル: CP1=2 / G1=max(2,1)=2 / G2=max(2,2)=2 / CP3=1、Reviewer は常に 2
+SELECTION_CASES = [
+    ("CP1", None, "standard", "standard"),
+    ("G1", "easy", "cheap", "cheap"),
+    ("G1", "normal", "standard", "standard"),
+    ("G1", "hard", "strong", "strong"),
+    ("G2", "easy", "cheap", "cheap"),
+    ("G2", "normal", "standard", "standard"),
+    ("G2", "hard", "strong", "strong"),
+    ("CP3", "easy", "cheap", "cheap"),
+    ("CP3", "normal", "cheap", "standard"),
+    ("CP3", "hard", "standard", "strong"),
+]
 
-    assert fr.resolve_model(config, "build", {}) == ("cheap", "")
+
+@pytest.mark.parametrize("stage,difficulty,worker,reviewer", SELECTION_CASES)
+def test_model_class_per_stage_and_difficulty(sandbox, monkeypatch, stage, difficulty,
+                                              worker, reviewer):
+    """基礎レベル + feature難易度 で Worker / Reviewer のクラスが決まること。"""
+    root, config, ctx = sandbox
+    ready_for(root, config, ctx, stage, difficulty)
+
+    fake = run_one(root, config, ctx, monkeypatch)
+    call = fake.reviewer_calls()[0]
+
+    assert call["stage"] == stage
+    assert call["worker_model_class"] == worker
+    assert call["reviewer_model_class"] == reviewer
+    assert call["model_selection"] == "auto"
+
+
+@pytest.mark.parametrize("stage,worker,reviewer", [
+    ("G1", "standard", "standard"),
+    ("G2", "standard", "standard"),
+    ("CP3", "cheap", "standard"),
+])
+def test_normal_difficulty_matches_previous_defaults(sandbox, monkeypatch, stage,
+                                                     worker, reviewer):
+    """normal のとき、基礎レベルがそのままモデルクラスに反映されること。"""
+    root, config, ctx = sandbox
+    ready_for(root, config, ctx, stage, "normal")
+
+    fake = run_one(root, config, ctx, monkeypatch)
+
+    assert fake.reviewer_calls()[0]["worker_model_class"] == worker
+    assert fake.reviewer_calls()[0]["reviewer_model_class"] == reviewer
+
+
+def test_missing_difficulty_is_treated_as_normal(sandbox, monkeypatch):
+    """feature_difficulty を持たない従来の CP1 記録でも停止しないこと。"""
+    root, config, ctx = sandbox
+    ready_for(root, config, ctx, "CP3", difficulty=None)
+
+    fake = run_one(root, config, ctx, monkeypatch)
+    call = fake.reviewer_calls()[0]
+
+    assert call["feature_difficulty"] == "normal"
+    assert call["worker_model_class"] == "cheap"
+
+
+def test_unknown_difficulty_value_is_treated_as_normal(sandbox, monkeypatch):
+    root, config, ctx = sandbox
+    ready_for(root, config, ctx, "CP3", difficulty="とてもむずかしい")
+
+    fake = run_one(root, config, ctx, monkeypatch)
+
+    assert fake.reviewer_calls()[0]["feature_difficulty"] == "normal"
+
+
+def test_spec_stage_leaves_difficulty_for_the_reviewer(sandbox, monkeypatch):
+    """CP1 では難易度を渡さない（Reviewer が判定する）こと。"""
+    root, config, ctx = sandbox
+
+    fake = run_one(root, config, ctx, monkeypatch)
+    call = fake.reviewer_calls()[0]
+
+    assert call["stage"] == "CP1"
+    assert call["feature_difficulty"] == ""
+
+
+def test_spec_stage_uses_normal_even_with_past_judgement(sandbox, monkeypatch):
+    """CP1 の実行では、過去の判定に引きずられず normal で選択すること。"""
+    root, config, ctx = sandbox
+    approve_spec(root, config, ctx, difficulty="hard")
+
+    fake = run_one(root, config, ctx, monkeypatch, review_current="CP1")
+
+    assert fake.reviewer_calls()[0]["reviewer_model_class"] == "standard"
+
+
+def test_difficulty_is_not_reevaluated_downstream(sandbox, monkeypatch):
+    """G1 以降では、承認済み CP1 記録の値をそのまま渡すこと。"""
+    root, config, ctx = sandbox
+    ready_for(root, config, ctx, "G1", "hard")
+
+    fake = run_one(root, config, ctx, monkeypatch)
+
+    assert fake.reviewer_calls()[0]["feature_difficulty"] == "hard"
+
+
+def test_worker_receives_selected_actual_model(sandbox, monkeypatch):
+    """選ばれたクラスの実モデルで AI CLI が起動されること。"""
+    root, config, ctx = sandbox
+    ready_for(root, config, ctx, "CP3", "hard")
+
+    fake = run_one(root, config, ctx, monkeypatch)
+
+    assert fake.worker_calls()[0]["_model"] == "m-standard"
+    assert fake.reviewer_calls()[0]["_model"] == "m-strong"
+
+
+def test_worker_model_class_is_empty_without_worker(sandbox, monkeypatch):
+    """Worker を起動しない実行では、Worker のクラスを記録しないこと。"""
+    root, config, ctx = sandbox
+    ready_for(root, config, ctx, "G2", "hard")
+
+    fake = run_one(root, config, ctx, monkeypatch, review_current="G1")
+
+    assert fake.worker_calls() == []
+    assert fake.reviewer_calls()[0]["worker_model_class"] == ""
+    assert fake.reviewer_calls()[0]["reviewer_model_class"] == "strong"
+
+
+# ---------------------------------------------------------------- モデル選択の優先順位
+
+
+def test_manual_override_beats_auto(sandbox, monkeypatch):
+    root, config, ctx = sandbox
+    ready_for(root, config, ctx, "CP3", "easy")
+
+    fake = run_one(root, config, ctx, monkeypatch, model_class="strong")
+    call = fake.reviewer_calls()[0]
+
+    assert call["model_selection"] == "manual"
+    assert call["worker_model_class"] == "strong"
+    assert call["reviewer_model_class"] == "strong"
+
+
+@pytest.mark.parametrize("model_class", ["cheap", "standard", "strong"])
+def test_manual_override_applies_to_both_sides(sandbox, monkeypatch, model_class):
+    """--model-class は Worker / Reviewer を同じクラスへ固定すること。"""
+    root, config, ctx = sandbox
+    ready_for(root, config, ctx, "CP3", "hard")
+
+    fake = run_one(root, config, ctx, monkeypatch, model_class=model_class)
+    call = fake.reviewer_calls()[0]
+
+    assert call["model_selection"] == "manual"
+    assert call["worker_model_class"] == model_class
+    assert call["reviewer_model_class"] == model_class
+
+
+def test_model_class_rejects_unknown_value(sandbox):
+    root, config, ctx = sandbox
+
+    with pytest.raises(SystemExit):
+        fr.cmd_run(root, config, ctx, once=True, dry_run=True, model_class="best")
+
+
+# ---------------------------------------------------------------- モデル選択の記録と表示
+
+
+def test_runner_record_uses_schema_v2_and_model_fields(sandbox, monkeypatch):
+    """runner が作る Gate記録に、schema と選択結果が入ること。"""
+    root, config, ctx = sandbox
+    ready_for(root, config, ctx, "CP3", "hard")
+
+    monkeypatch.setattr(fr, "run_ai", lambda root_, argv: 1)
+    fr.cmd_run(root, config, ctx, once=True, dry_run=False)
+
+    front = latest_front(root, ctx)
+
+    assert front["schema"] == "gate_record/v2"
+    assert front["recorded_by"] == "runner"
+    assert front["feature_difficulty"] == "hard"
+    assert front["worker_model_class"] == "standard"
+    assert front["reviewer_model_class"] == "strong"
+    assert front["model_selection"] == "auto"
+
+
+def test_existing_v1_records_are_still_read(sandbox, monkeypatch):
+    """gate_record/v1 の過去記録を、そのまま読めること。"""
+    root, config, ctx = sandbox
+    gates = root / ctx["feature_dir"] / "gates"
+    old = write_record(
+        gates, "0001_x_cp1.md", schema="gate_record/v1", verdict="PASS",
+        next_step="GO", gate="CP1", run_seq=1, recorded_by="reviewer",
+        spec_hash=fr.file_hash(fr.spec_path(root, config, ctx)),
+    )
+    old.write_text(old.read_text(encoding="utf-8") + approval("仕様承認", True),
+                   encoding="utf-8")
+
+    fake = run_one(root, config, ctx, monkeypatch)
+
+    assert fr.read_front_matter(old)["schema"] == "gate_record/v1"
+    assert fake.reviewer_calls()[0]["stage"] == "G1"
+    assert fake.reviewer_calls()[0]["feature_difficulty"] == "normal"
+
+
+def test_dry_run_shows_model_selection(sandbox, capsys):
+    root, config, ctx = sandbox
+    ready_for(root, config, ctx, "G1", "hard")
+
+    fr.cmd_run(root, config, ctx, once=True, dry_run=True)
+    out = capsys.readouterr().out
+
+    assert "モデル選択: auto（feature_difficulty=hard）" in out
+    assert "base=2" in out
+    assert "class=strong" in out
+    assert "model=m-strong" in out
+    assert "prompts/create_function_call_flow.md" in out
+    assert "prompts/review_stage.md" in out
+
+
+def test_dry_run_shows_manual_selection(sandbox, capsys):
+    root, config, ctx = sandbox
+    ready_for(root, config, ctx, "G1", "hard")
+
+    fr.cmd_run(root, config, ctx, once=True, dry_run=True, model_class="cheap")
+    out = capsys.readouterr().out
+
+    assert "モデル選択: manual（--model-class による指定）" in out
+    assert "class=cheap" in out
+    # 難易度も基礎レベルも使わないため、base は表示しない
+    assert "base=" not in out
+
+
+def test_status_shows_model_selection(sandbox, capsys):
+    root, config, ctx = sandbox
+    ready_for(root, config, ctx, "G1", "hard")
+
+    fr.cmd_status(root, config, ctx)
+
+    assert "モデル選択: auto（feature_difficulty=hard）" in capsys.readouterr().out
 
 
 # ---------------------------------------------------------------- 設定とテンプレートの整合
@@ -1595,8 +1880,8 @@ def test_cp1_review_does_not_require_downstream_coverage():
     assert "G1は要求カバレッジ" in text
 
 
-def test_config_stages_have_role_and_scope_entries():
-    """stages に列挙した全 stage に、role と stage × role の範囲が定義されていること。"""
+def test_config_stages_have_scope_and_prompt_entries():
+    """stages に列挙した全 stage に、stage × role の範囲とプロンプトが定義されていること。"""
     config = fr.read_config(REPO_ROOT)
 
     for stage in fr.split_list(config["stages"]):
@@ -1604,7 +1889,6 @@ def test_config_stages_have_role_and_scope_entries():
 
         assert f"stage_{key}_worker" in config, stage
         assert f"stage_{key}_reviewer" in config, stage
-        assert f"stage_{key}_worker_role" in config, stage
         assert f"stage_{key}_prompts" in config, stage
 
 
@@ -2141,7 +2425,7 @@ def test_completed_feature_reports_done(sandbox, capsys, monkeypatch):
     fake = FakeAI(root, lambda info: {})
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    code = fr.cmd_run(root, config, ctx, {}, False, False)
+    code = fr.cmd_run(root, config, ctx, False, False)
 
     assert code == 0
     assert "完了しました。" in capsys.readouterr().out
@@ -2158,7 +2442,7 @@ def test_done_stops_when_implementation_changed(sandbox, capsys, monkeypatch):
     fake = FakeAI(root, lambda info: {})
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    code = fr.cmd_run(root, config, ctx, {}, False, False)
+    code = fr.cmd_run(root, config, ctx, False, False)
     out = capsys.readouterr().out
 
     assert code == 1
@@ -2177,7 +2461,7 @@ def test_done_stops_when_test_plan_changed(sandbox, capsys, monkeypatch):
     )
 
     monkeypatch.setattr(fr, "run_ai", FakeAI(root, lambda info: {}))
-    code = fr.cmd_run(root, config, ctx, {}, False, False)
+    code = fr.cmd_run(root, config, ctx, False, False)
     out = capsys.readouterr().out
 
     assert code == 1
@@ -2192,7 +2476,7 @@ def test_done_stops_when_design_changed(sandbox, capsys, monkeypatch):
     (root / ctx["feature_dir"] / "21_design.md").write_text("方式変更\n", encoding="utf-8")
 
     monkeypatch.setattr(fr, "run_ai", FakeAI(root, lambda info: {}))
-    code = fr.cmd_run(root, config, ctx, {}, False, False)
+    code = fr.cmd_run(root, config, ctx, False, False)
     out = capsys.readouterr().out
 
     assert code == 1
@@ -2210,7 +2494,7 @@ def test_done_stops_when_spec_changed(sandbox, capsys, monkeypatch):
     fake = FakeAI(root, lambda info: {})
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    code = fr.cmd_run(root, config, ctx, {}, False, False)
+    code = fr.cmd_run(root, config, ctx, False, False)
     out = capsys.readouterr().out
 
     assert code == 1
@@ -2228,7 +2512,7 @@ def test_stale_stop_does_not_write_gate_record(sandbox, monkeypatch):
     (root / ctx["feature_dir"] / "23_test_plan.md").write_text("追加\n", encoding="utf-8")
 
     monkeypatch.setattr(fr, "run_ai", FakeAI(root, lambda info: {}))
-    fr.cmd_run(root, config, ctx, {}, False, False)
+    fr.cmd_run(root, config, ctx, False, False)
 
     assert len(fr.list_records(root, ctx["feature_dir"])) == before
 
@@ -2244,7 +2528,7 @@ def test_stale_stop_preserves_existing_records(sandbox, monkeypatch):
     (root / ctx["feature_dir"] / "21_design.md").write_text("変更\n", encoding="utf-8")
 
     monkeypatch.setattr(fr, "run_ai", FakeAI(root, lambda info: {}))
-    fr.cmd_run(root, config, ctx, {}, False, False)
+    fr.cmd_run(root, config, ctx, False, False)
 
     assert {p.name: p.read_bytes() for p in fr.list_records(root, ctx["feature_dir"])} == before
 
@@ -2263,7 +2547,7 @@ def test_await_human_stops_when_upstream_changed(sandbox, capsys, monkeypatch):
     (root / ctx["feature_dir"] / "23_test_plan.md").write_text("観点追加\n", encoding="utf-8")
 
     monkeypatch.setattr(fr, "run_ai", FakeAI(root, lambda info: {}))
-    code = fr.cmd_run(root, config, ctx, {}, False, False)
+    code = fr.cmd_run(root, config, ctx, False, False)
     out = capsys.readouterr().out
 
     assert code == 1
@@ -2291,7 +2575,7 @@ def test_done_unaffected_for_records_without_artifacts_hash(sandbox, capsys, mon
     (root / "src/demo_app/features/demo.py").write_text("x = 2\n", encoding="utf-8")
 
     monkeypatch.setattr(fr, "run_ai", FakeAI(root, lambda info: {}))
-    code = fr.cmd_run(root, config, ctx, {}, False, False)
+    code = fr.cmd_run(root, config, ctx, False, False)
 
     assert code == 0
     assert "完了しました。" in capsys.readouterr().out
@@ -2310,7 +2594,7 @@ def test_reviewer_receives_artifacts_hash(sandbox, monkeypatch):
     })
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    fr.cmd_run(root, config, ctx, {}, True, False)
+    fr.cmd_run(root, config, ctx, True, False)
 
     passed = fake.reviewer_calls()[0]["artifacts_hash"]
     assert passed == fr.current_artifacts_hash(root, config, ctx, "G1")
@@ -2337,7 +2621,7 @@ def test_artifacts_hash_reflects_state_after_worker(sandbox, monkeypatch):
 
     monkeypatch.setattr(fr, "run_ai", worker_writes)
 
-    fr.cmd_run(root, config, ctx, {}, True, False)
+    fr.cmd_run(root, config, ctx, True, False)
 
     passed = fake.reviewer_calls()[0]["artifacts_hash"]
     assert passed != before
@@ -2374,7 +2658,7 @@ def test_rework_runs_worker_then_reviewer(sandbox, monkeypatch):
     fake = rework_ai(root)
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    fr.cmd_run(root, config, ctx, {}, True, False, rework="G2")
+    fr.cmd_run(root, config, ctx, True, False, rework="G2")
 
     assert fake.prompts_used()[:2] == [
         f"{fr.WORKER_PROMPT} を参照してください。",
@@ -2390,7 +2674,7 @@ def test_rework_records_causality_and_supersedes(sandbox, monkeypatch):
     fake = rework_ai(root)
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    fr.cmd_run(root, config, ctx, {}, True, False, rework="G2")
+    fr.cmd_run(root, config, ctx, True, False, rework="G2")
 
     call = fake.reviewer_calls()[0]
     assert call["triggered_by"] == "REWORK"
@@ -2405,7 +2689,7 @@ def test_rework_preserves_previous_records(sandbox, monkeypatch):
     before = {p.name: p.read_bytes() for p in fr.list_records(root, ctx["feature_dir"])}
 
     monkeypatch.setattr(fr, "run_ai", rework_ai(root))
-    fr.cmd_run(root, config, ctx, {}, True, False, rework="G2")
+    fr.cmd_run(root, config, ctx, True, False, rework="G2")
 
     after = {p.name: p.read_bytes() for p in fr.list_records(root, ctx["feature_dir"])}
 
@@ -2421,7 +2705,7 @@ def test_rework_continues_into_downstream_stages(sandbox, monkeypatch):
     fake = rework_ai(root)
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    fr.cmd_run(root, config, ctx, {}, False, False, rework="G2")
+    fr.cmd_run(root, config, ctx, False, False, rework="G2")
 
     assert [c["stage"] for c in fake.worker_calls()] == ["G2", "CP3"]
 
@@ -2430,7 +2714,7 @@ def test_rework_rejects_unknown_stage(sandbox):
     root, config, ctx = sandbox
 
     with pytest.raises(SystemExit) as error:
-        fr.cmd_run(root, config, ctx, {}, False, False, rework="G9")
+        fr.cmd_run(root, config, ctx, False, False, rework="G9")
 
     assert "stages にありません" in str(error.value)
 
@@ -2444,7 +2728,7 @@ def test_rework_is_exclusive_with_other_modes(sandbox, other):
     root, config, ctx = sandbox
 
     with pytest.raises(SystemExit) as error:
-        fr.cmd_run(root, config, ctx, {}, False, False, rework="G2", **other)
+        fr.cmd_run(root, config, ctx, False, False, rework="G2", **other)
 
     assert "同時に指定できません" in str(error.value)
 
@@ -2456,7 +2740,7 @@ def test_rework_blocked_by_manufacturing_preflight(sandbox, monkeypatch):
     fake = rework_ai(root)
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    code = fr.cmd_run(root, config, ctx, {}, False, False, rework="G1")
+    code = fr.cmd_run(root, config, ctx, False, False, rework="G1")
 
     assert code == 1
     assert fake.calls == []
@@ -2471,7 +2755,7 @@ def test_rework_spec_stage_still_requires_human_approval(sandbox, monkeypatch):
     fake = rework_ai(root)
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    code = fr.cmd_run(root, config, ctx, {}, False, False, rework="CP1")
+    code = fr.cmd_run(root, config, ctx, False, False, rework="CP1")
 
     assert code == 0
     # CP1 の新しい PASS 記録が承認待ちで止まり、G1 以降へ進まないこと
@@ -2486,7 +2770,7 @@ def test_rework_dry_run_does_not_execute(sandbox, monkeypatch):
     fake = rework_ai(root)
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    code = fr.cmd_run(root, config, ctx, {}, False, True, rework="G2")
+    code = fr.cmd_run(root, config, ctx, False, True, rework="G2")
 
     assert code == 0
     assert fake.calls == []
@@ -2498,7 +2782,7 @@ def test_dry_run_does_not_write_blocked_record(sandbox, monkeypatch):
     before = len(fr.list_records(root, ctx["feature_dir"]))
 
     monkeypatch.setattr(fr, "run_ai", rework_ai(root))
-    code = fr.cmd_run(root, config, ctx, {}, False, True, rework="G1")
+    code = fr.cmd_run(root, config, ctx, False, True, rework="G1")
 
     assert code == 1
     assert len(fr.list_records(root, ctx["feature_dir"])) == before
@@ -2515,7 +2799,7 @@ def test_retry_blocked_still_rejects_completed_feature(sandbox):
     (root / ctx["feature_dir"] / "23_test_plan.md").write_text("観点追加\n", encoding="utf-8")
 
     with pytest.raises(SystemExit) as error:
-        fr.cmd_run(root, config, ctx, {}, False, False, retry_blocked=True)
+        fr.cmd_run(root, config, ctx, False, False, retry_blocked=True)
 
     assert "BLOCKED からの復旧専用です" in str(error.value)
 
@@ -2530,7 +2814,7 @@ def test_review_current_recovers_human_edit_without_worker(sandbox, monkeypatch)
     fake = rework_ai(root)
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    code = fr.cmd_run(root, config, ctx, {}, False, False, review_current="G2")
+    code = fr.cmd_run(root, config, ctx, False, False, review_current="G2")
 
     assert code == 0
     assert fake.worker_calls() == []
@@ -2545,7 +2829,7 @@ def test_review_current_clears_stale_and_lets_downstream_run(sandbox, monkeypatc
     (root / ctx["feature_dir"] / "23_test_plan.md").write_text("人間が追記\n", encoding="utf-8")
 
     monkeypatch.setattr(fr, "run_ai", rework_ai(root))
-    fr.cmd_run(root, config, ctx, {}, False, False, review_current="G2")
+    fr.cmd_run(root, config, ctx, False, False, review_current="G2")
 
     assert fr.stale_stages(root, config, ctx) == []
     assert fr.resolve_action(root, config, ctx["feature_dir"]).stage == "CP3"
@@ -2666,7 +2950,7 @@ def test_run_stops_before_building_on_stale_upstream(sandbox, capsys, monkeypatc
     fake = FakeAI(root, lambda info: {})
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    code = fr.cmd_run(root, config, ctx, {}, False, False)
+    code = fr.cmd_run(root, config, ctx, False, False)
     out = capsys.readouterr().out
 
     assert code == 1
@@ -2685,7 +2969,7 @@ def test_run_stops_before_g2_when_design_is_stale(sandbox, capsys, monkeypatch):
     fake = FakeAI(root, lambda info: {})
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    code = fr.cmd_run(root, config, ctx, {}, False, False)
+    code = fr.cmd_run(root, config, ctx, False, False)
 
     assert code == 1
     assert "変更が検出された stage: G1" in capsys.readouterr().out
@@ -2714,7 +2998,7 @@ def test_run_ignores_own_stage_when_rerunning_it(sandbox, monkeypatch):
     })
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    fr.cmd_run(root, config, ctx, {}, True, False)
+    fr.cmd_run(root, config, ctx, True, False)
 
     assert [c["stage"] for c in fake.worker_calls()] == ["G1"]
 
@@ -2732,7 +3016,7 @@ def test_normal_progression_is_not_blocked_by_stale_check(sandbox, monkeypatch):
     })
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    fr.cmd_run(root, config, ctx, {}, True, False)
+    fr.cmd_run(root, config, ctx, True, False)
 
     assert [c["stage"] for c in fake.worker_calls()] == ["G2"]
 
@@ -2747,7 +3031,7 @@ def test_review_current_works_even_when_upstream_is_stale(sandbox, monkeypatch):
     fake = rework_ai(root)
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    code = fr.cmd_run(root, config, ctx, {}, True, False, review_current="G1")
+    code = fr.cmd_run(root, config, ctx, True, False, review_current="G1")
 
     assert code == 0
     assert fake.reviewer_calls()[0]["stage"] == "G1"
@@ -2762,7 +3046,7 @@ def test_rework_works_even_when_upstream_is_stale(sandbox, monkeypatch):
     fake = rework_ai(root)
     monkeypatch.setattr(fr, "run_ai", fake)
 
-    code = fr.cmd_run(root, config, ctx, {}, True, False, rework="G1")
+    code = fr.cmd_run(root, config, ctx, True, False, rework="G1")
 
     assert code == 0
     assert fake.worker_calls()[0]["stage"] == "G1"

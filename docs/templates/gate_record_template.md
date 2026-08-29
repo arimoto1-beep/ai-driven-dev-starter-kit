@@ -1,5 +1,5 @@
 ---
-schema: gate_record/v1
+schema: gate_record/v2
 feature:
 gate:
 run_seq:
@@ -25,9 +25,10 @@ viewpoint_covered:
 spec_hash:
 artifacts_hash:
 review_independence: separate_context
-model_design:
-model_build:
-model_review:
+feature_difficulty:
+worker_model_class:
+reviewer_model_class:
+model_selection:
 artifacts:
 human_decision_required: 0
 ---
@@ -63,6 +64,21 @@ artifacts_hash:
   次回の実行時、runner が再計算して照合し、
   「Gate 通過後に成果物が変更されたか」を判定する。
 
+feature_difficulty:
+  feature 全体の難易度。`easy` / `normal` / `hard` のいずれか。
+  **仕様 stage（CP1）でのみ、あなたが判定して記入する。** 判定基準は
+  `prompts/review_stage.md` にある。
+  他 stage では runner から渡される。**自分で判定し直さない。転記するだけ。**
+
+worker_model_class / reviewer_model_class / model_selection:
+  runner が決めたモデル選択の結果。**自分で計算・推測しない。渡された値をそのまま転記する。**
+  `model_selection` は `auto`（既定）または `manual`（`--model-class` 指定時）。
+  Worker を起動していない実行では `worker_model_class` は空になる。
+
+schema:
+  `gate_record/v2` は上記の front matter 構成を表す。
+  `gate_record/v1` の過去記録は履歴としてそのまま残す（書き換えない）。
+
 immutable のルール:
 - `verdict: IN_PROGRESS` の間だけ、このファイルへラウンドを追記する
 - `PASS` / `RETURN` / `BLOCKED` を書いた時点で immutable
@@ -86,6 +102,7 @@ immutable のルール:
 | 要求カバレッジ | 0 / 0 |
 | 観点カバレッジ | 0 / 0 |
 | レビュー独立性 | 未定 |
+| モデル選択 | 未定 |
 
 人間が見る要点を3行以内で記載してください。**AIレビューの全内容をここへ書かないでください。**
 

@@ -3,7 +3,7 @@
 ## このファイルの目的
 
 feature 単位の新規開発を、AIレビューと修正の収束ループで進める**オートモード**の設定を定めます。
-stage、Gate、判定値、baseline、役割ごとの変更範囲、モデル役割、レビュー独立性、記録の場所を、このファイルが正本とします。
+stage、Gate、判定値、baseline、役割ごとの変更範囲、モデル選択、レビュー独立性、記録の場所を、このファイルが正本とします。
 
 `tools/feature_runner.py` は、このファイルの「runner 設定ブロック」を読んで動作します。
 **ルール文書と設定を同じファイルに置くことで、正本を1つに保ちます。**
@@ -14,7 +14,7 @@ stage、Gate、判定値、baseline、役割ごとの変更範囲、モデル役
 - `prompts/review_stage.md`（Reviewer）
 - オートモードで実装を行う作業
 - Gate記録を読む作業
-- モデル割り当てを変更するとき
+- モデル選択の設定を変更するとき
 
 ## このファイルに含めないもの
 
@@ -508,32 +508,91 @@ python tools/feature_runner.py --feature <app>/<feature> --review-current G2
 
 ---
 
-## モデル役割
-
-| 役割 | 使う場面 | 既定のクラス |
-|---|---|---|
-| `design` | CP1 / G1 / G2 の Worker | `standard` |
-| `build` | CP3 の Worker | `cheap` |
-| `review` | すべての stage の Reviewer | `standard` |
+## モデル選択
 
 モデルクラスは `cheap` / `standard` / `strong` の3つです。
 **ルール文書とプロンプトには、実際のモデル名を書きません。** 実モデルは下記の設定ブロックだけに書きます。
-
-解決の流れは `stage → role → model class → 実モデル` です。runner がこれを解決し、Worker / Reviewer を起動します。
 **プロンプト自身がモデルを変更しません。モデルの選択は起動側の責務です。**
 
-### 使い分けの例
+**標準はモデル自動選択です。** 利用者が役割ごとのクラスを決める必要はありません。
 
-プリセットという仕組みは設けません。設定ブロックの `role_*` を3行書き換えるだけです。
+```text
+プロンプトの基礎レベル  +  feature 難易度  =  最終レベル
+        ↓
+1 → cheap ／ 2 → standard ／ 3 → strong（1〜3の範囲へ丸める）
+```
 
-| 使い分け | `role_design` | `role_build` | `role_review` |
-|---|---|---|---|
-| コスト優先（低リスク、試作） | `cheap` | `cheap` | `standard` |
-| **標準（既定）** | `standard` | `cheap` | `standard` |
-| 品質優先（難易度・影響が大きい） | `strong` | `standard` | `strong` |
+### feature 難易度
 
-1回だけ変える場合は、runner の `--role-design strong` などで上書きします。
+feature 全体の難易度を、**CP1 の仕様レビューで1回だけ**判定します。判定するのは CP1 の Reviewer で、
+仕様レビューの一部として行います。**モデル選択のために別のAIを呼びません。**
+
+| 値 | 補正 | 目安 |
+|---|---|---|
+| `easy` | `-1` | 要求が少なく、入出力と異常系が明確で、設計判断の余地がほとんどない |
+| `normal` | `0` | `easy` / `hard` のどちらにも明確には該当しない（**迷った場合はこれ**） |
+| `hard` | `+1` | 要求どうしが相互に影響する、異常系・境界条件が多い、または設計方式に複数案があり選択の余地が大きい |
+
+- 判定結果は CP1 Gate記録の `feature_difficulty` に残します
+- **G1 / G2 / CP3 では再判定しません。** 承認済み CP1 Gate記録の値を runner が読んで使います
+- 通常進行、`fix`、`RETURN`、`--rework`、`--retry-blocked` でも再判定しません
+- **`20_spec.md` を変更した場合だけ**、仕様承認が無効になり、再レビュー時の CP1 Reviewer が判定し直します
+- `feature_difficulty` を持たない Gate記録は `normal` として扱います（従来の記録を壊しません）
+- **CP1 を実行する時点では難易度がまだ確定していません。** CP1 の Worker / Reviewer は `normal` として選択します
+
+### プロンプトの基礎レベル
+
+**役割単位ではなく、実際に使うプロンプト単位で持ちます。** 値は設定ブロックの `base_level_*` です。
+runner は `stage_*_prompts` に列挙されたパスのファイル名から `base_level_<ファイル名>` を引きます。
+
+| プロンプト | 基礎レベル | 使う場面 |
+|---|---|---|
+| `create_feature_spec` | 2 | CP1 Worker |
+| `create_function_design` | 2 | G1 Worker |
+| `create_function_call_flow` | 1 | G1 Worker |
+| `create_test_design` | 2 | G2 Worker |
+| `create_review_checklist` | 2 | G2 Worker |
+| `implement_feature` | 1 | CP3 Worker |
+| `review_stage` | 2 | すべての stage の Reviewer |
+
+- **1回の起動で複数のプロンプトを使う stage は、最も高いものに合わせます**（合計や平均は使いません）。G1 は `max(2, 1) = 2` です
+- `base_level_*` が無い場合、実行時は `2` として継続します。設定漏れは自動テストで検出します
+
+### 選択結果
+
+| 実行対象 | 基礎 | `easy` | `normal` | `hard` |
+|---|:---:|---|---|---|
+| CP1 Worker | 2 | standard | standard | standard |
+| CP1 Reviewer | 2 | standard | standard | standard |
+| G1 Worker | 2 | cheap | standard | strong |
+| G2 Worker | 2 | cheap | standard | strong |
+| CP3 Worker | 1 | cheap | cheap | standard |
+| G1 / G2 / CP3 Reviewer | 2 | cheap | standard | strong |
+
+**`normal` は難易度補正が 0 のため、プロンプトの基礎レベルがそのままモデルクラスに反映されます。**
+
+### 1回だけ固定したい場合
+
+```bash
+python tools/feature_runner.py --feature <app>/<feature> --model-class strong
+```
+
+- `cheap` / `standard` / `strong` のいずれかを指定します
+- 指定した場合、**feature 難易度と基礎レベルは使いません。** Worker / Reviewer とも指定したクラスになります
+
+### 選択の方式
+
+**方式は2つだけです。**
+
+```text
+--model-class の指定あり  → model_selection: manual
+--model-class の指定なし  → model_selection: auto（標準）
+```
+
 **実際に使ったクラスは Gate記録へ必ず記録します。**
+
+モデルクラスは、役割（`design` / `build` / `review`）ではなく**プロンプト**に紐づきます。
+コスト方針を変えたい場合は、`base_level_*` を調整してください。
 
 ---
 
@@ -612,10 +671,16 @@ runner は、Worker と Reviewer の**実行直前と実行直後**のリポジ�
 - `tools/feature_loop.local` が存在する場合、同じ形式で上書きします（`.gitignore` 対象）
 
 ```feature_loop
-# --- 役割へのモデルクラス割り当て（コスト調整はここを変える） ---
-role_design    = standard
-role_build     = cheap
-role_review    = standard
+# --- プロンプトごとの基礎レベル（モデル自動選択の基礎値。通常は変更しない） ---
+# feature 難易度（easy=-1 / normal=0 / hard=+1）と足して 1〜3 へ丸め、
+# 1=cheap / 2=standard / 3=strong を選ぶ。
+base_level_create_feature_spec       = 2
+base_level_create_function_design    = 2
+base_level_create_function_call_flow = 1
+base_level_create_test_design        = 2
+base_level_create_review_checklist   = 2
+base_level_implement_feature         = 1
+base_level_review_stage              = 2
 
 # --- モデルクラスへの実モデル割り当て（利用者が記入する。ここ以外にモデル名を書かない） ---
 model_cheap    = <記入してください>
@@ -648,13 +713,6 @@ approval_heading_g1  = 設計進行承認（G1 を Human Gate にした場合の
 approval_heading_g2  = 実装工程進行承認（G2 を Human Gate にした場合のみ）
 approval_heading_cp3 = 受け入れ判断（CP3 のみ）
 human_note_heading   = 気になる点（任意）
-
-# --- stage ごとの Worker の役割 ---
-stage_cp1_worker_role = design
-stage_g1_worker_role  = design
-stage_g2_worker_role  = design
-stage_cp3_worker_role = build
-reviewer_role         = review
 
 # --- stage × role の生成・更新対象 ---
 # 20_spec.md を更新できるのは CP1 の Worker だけ。製造 stage からは触れない。
@@ -692,6 +750,7 @@ stage_cp3_prompts  = prompts/implement_feature.md
 - `stage_*_worker` / `stage_*_reviewer` を広げる場合、上記「stage × role の変更範囲」の表と、対応する `prompts/*.md` の `## 変更してよいファイル` も同時に更新してください
 - **`stage_*_artifacts` に書いたファイルだけが、通過後の変更検出の対象です。** ここに無いファイルを変更しても検出されません。`stage_cp3_artifacts` の既定値は feature 1件ぶんの実装ファイルとテストファイルです。結合試験など複数ファイルを CP3 の成果物として扱うプロジェクトでは、ここを広げてください。ただし `src/{app}/features/` のようにディレクトリ単位へ広げると、**同じ app の別 feature を変更しただけでも変更ありと判定されます**
 - `model_*` と `ai_command` は利用者の環境に依存します。**リポジトリへコミットしたくない場合は `tools/feature_loop.local` へ書いてください**
+- `stage_*_prompts` へプロンプトを追加した場合は、対応する `base_level_*` も追加してください（自動テストで検出します）
 
 ---
 

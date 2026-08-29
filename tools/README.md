@@ -37,8 +37,8 @@ python tools/feature_runner.py --feature <command_or_app_name>/<feature_name> --
 # 人間 Gate（CP1 / CP3）で自動停止するまで進める
 python tools/feature_runner.py --feature <command_or_app_name>/<feature_name>
 
-# この実行だけモデルクラスを上書きする
-python tools/feature_runner.py --feature <command_or_app_name>/<feature_name> --role-design strong --role-review strong
+# この実行だけモデルクラスを固定する（通常は指定しません）
+python tools/feature_runner.py --feature <command_or_app_name>/<feature_name> --model-class strong
 
 # マニュアル介入からの復帰（Worker を起動せず、現在の成果物を Reviewer が見直す）
 python tools/feature_runner.py --feature <command_or_app_name>/<feature_name> --review-current G2
@@ -131,6 +131,40 @@ runner 自身が処理継続を禁止した場合（Reviewer の変更範囲違�
 **実行前に、[`docs/rules/project/70_feature_loop.md`](../docs/rules/project/70_feature_loop.md) の設定ブロックへ `model_cheap` / `model_standard` / `model_strong` と `ai_command` を記入してください。**
 リポジトリへコミットしたくない場合は、同じ形式で `tools/feature_loop.local` へ書くと上書きされます（`.gitignore` 対象）。
 
+### モデル選択
+
+**どのモデルクラスを使うかは runner が決めます。利用者が役割ごとに決める必要はありません。**
+
+```text
+プロンプトの基礎レベル  +  feature 難易度  =  最終レベル
+        ↓
+1 → cheap ／ 2 → standard ／ 3 → strong
+```
+
+- feature 難易度（`easy` / `normal` / `hard`）は、**CP1 の仕様レビューで1回だけ**判定され、CP1 Gate記録に残ります。モデル選択のために別のAIを呼びません
+- G1 / G2 / CP3 では再判定しません。`20_spec.md` を変更して再レビューになった場合だけ、判定し直されます
+- プロンプトごとの基礎レベルは設定ブロックの `base_level_*` です。通常は変更しません
+- 実際に使ったクラスは Gate記録（`worker_model_class` / `reviewer_model_class` / `model_selection`）に残ります
+
+今回だけ固定したい場合は `--model-class` を指定します。指定すると難易度と基礎レベルは使いません。
+
+```bash
+python tools/feature_runner.py --feature <command_or_app_name>/<feature_name> --model-class strong
+```
+
+`--dry-run` で、実行前に選択結果を確認できます。
+
+```text
+--- dry-run: stage=G1 kind=run mode=create
+モデル選択: auto（feature_difficulty=normal）
+Worker   base=2  class=standard  model=<設定した実モデル>
+  使用prompt: prompts/create_function_design.md, prompts/create_function_call_flow.md
+Reviewer base=2  class=standard  model=<設定した実モデル>
+  使用prompt: prompts/review_stage.md
+```
+
+定義の正本は [`docs/rules/project/70_feature_loop.md`](../docs/rules/project/70_feature_loop.md) の「モデル選択」です。
+
 ### 人間側の仕様と、AI製造側の境界
 
 **`20_spec.md` までが人間側の成果物、`21_design.md` 以降が AI 製造側の成果物です。**
@@ -167,4 +201,4 @@ Manufacturing Preflight が確認するのは次の3つです。**人間が手�
 - テストの実行方法: [`docs/rules/project/40_testing_rules.md`](../docs/rules/project/40_testing_rules.md)
 - レビュー結果と集計の運用: [`docs/rules/project/25_review_policy.md`](../docs/rules/project/25_review_policy.md)
 - 次工程移行判定: [`docs/rules/core/20_approval_and_review.md`](../docs/rules/core/20_approval_and_review.md)
-- オートモード（stage、Gate、モデル役割、Gate記録）: [`docs/rules/project/70_feature_loop.md`](../docs/rules/project/70_feature_loop.md)
+- オートモード（stage、Gate、モデル選択、Gate記録）: [`docs/rules/project/70_feature_loop.md`](../docs/rules/project/70_feature_loop.md)

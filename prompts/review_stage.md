@@ -53,7 +53,10 @@
 - supersedes: `なければ空`
 - **human_gate**: `yes`（この stage で人間が停止する）／ `no`（AI Gate）
 - review_independence: `separate_context` など
-- 使用モデル区分: `cheap` / `standard` / `strong`
+- **feature_difficulty**: `easy` / `normal` / `hard`。**仕様 stage（CP1）では空で渡される。その場合はあなたが判定する**
+- **worker_model_class**: `runner が決めた値。Worker を起動していない実行では空`
+- **reviewer_model_class**: `runner が決めた値`
+- **model_selection**: `auto` / `manual`
 - guard_violations: `runner が検出した範囲外変更の一覧。なければ「なし」`
 - human_note: `人間の自然文による指摘。なければ空`
 - 補足条件: `必要に応じて書く。なければ「なし」`
@@ -231,6 +234,35 @@ CP1 では設計・テスト成果物がまだ存在しないため、**下流�
 
 CP1 の PASS 判定は、要求数ではなく上記の仕様レビュー観点（完全性・検証可能性・無矛盾・曖昧さ・空白の有無）で行います。
 要求と設計の対応づけは、`21_design.md` / `22_flow.md` が生成された **G1 で初めて評価**します。
+
+#### feature 難易度の判定
+
+**渡された `feature_difficulty` が空の場合（＝ CP1）、あなたが判定して front matter へ記録します。**
+
+これは、この feature の製造工程（G1 / G2 / CP3）でどのモデルクラスを使うかを runner が決めるための値です。
+**feature 全体について1回だけ判定します。** 以降の stage では再判定しません。
+
+すでに `20_spec.md` を読んで行ったレビューの結果から、次の3つのいずれかを選びます。
+
+| 値 | 目安 |
+|---|---|
+| `easy` | 要求が少なく、入出力と異常系が明確で、設計判断の余地がほとんどない |
+| `normal` | `easy` / `hard` のどちらにも明確には該当しない |
+| `hard` | 要求どうしが相互に影響する、異常系・境界条件が多い、または設計方式に複数案があり選択の余地が大きい |
+
+- **迷った場合は `normal` にしてください。**
+- 判定基準を自分で細分化しないでください。3値だけです
+- **この判定のために追加の調査をしないでください。** 仕様レビューで読んだ内容だけで判断します
+- `verdict` や FINDING の判定には使いません。難易度が `hard` でも `PASS` になり得ます
+
+**CP1 以外の stage では、渡された値をそのまま転記してください。自分で判定し直さないでください。**
+
+#### モデル選択結果の記録
+
+**`worker_model_class` / `reviewer_model_class` / `model_selection` は、渡された値をそのまま記録してください。**
+
+- **自分で計算・推測しないでください。** 値は runner が決めています
+- `worker_model_class` が空で渡された場合（Worker を起動していない実行）は、空のまま記録します
 
 #### spec_hash の記録
 
@@ -417,7 +449,7 @@ CP1 の PASS 判定は、要求数ではなく上記の仕様レビュー観点�
 **フラットな `key: value` のみを書きます。入れ子とリスト構文を使いません。** リストはカンマ区切り、空値は未設定を表します。
 
 ```text
-schema: gate_record/v1
+schema: gate_record/v2
 feature: <command_or_app_name>/<feature_name>
 gate: <stage>
 run_seq: <連番>
@@ -443,9 +475,10 @@ req_covered: <CP1では空。G1以降で対応済み要求数>
 viewpoint_total: <CP1/G1では空。G2以降で観点ID数>
 viewpoint_covered: <CP1/G1では空。G2以降で対応済み観点数>
 review_independence: separate_context
-model_design: standard
-model_build:
-model_review: standard
+feature_difficulty: normal
+worker_model_class: standard
+reviewer_model_class: standard
+model_selection: auto
 artifacts: 21_design.md, 22_flow.md
 human_decision_required: 2
 ```
