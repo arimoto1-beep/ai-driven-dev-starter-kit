@@ -8,6 +8,30 @@
 
 ## どこから始めるか
 
+**prompt の渡し方は、進め方によって変わります。**
+
+### オートモードの場合：人間が1本ずつ選ぶ必要はありません
+
+`tools/feature_runner.py` が prompt を選んで起動します。
+
+```text
+feature_runner.py
+    ├─ Worker   → prompts/run_stage.md → その stage に設定された作業用 prompt へ委譲
+    └─ Reviewer → prompts/review_stage.md
+```
+
+runner 実行時に人間が指定するのは、基本的に feature（`--feature <app>/<feature>`）です。
+**どの stage でどの prompt へ委譲するかは `docs/rules/project/70_feature_loop.md` の設定が決めます。**
+起動方法は [`../tools/README.md`](../tools/README.md)、実際に一周する手順は [`tutorials/005_automode_first_feature.md`](tutorials/005_automode_first_feature.md) を参照してください。
+
+**成果物の作り方の正本は、委譲先の個別 prompt のままです。**
+ただし、委譲されるのは stage に設定された作業用 prompt だけです。
+`prompts/` にあるすべての個別 prompt が Worker から使われるわけではありません。
+
+### マニュアルモードの場合：目的に合う prompt を人間が選びます
+
+このドキュメントで説明するのは、こちらの渡し方です。**新しい feature を作る場合でも利用できます。**
+
 チュートリアルを進めたい場合は、まず `docs/tutorials/010_simple_calculator.md` を開いてください。
 汎用プロンプトの使い方だけを確認したい場合は、このドキュメントを上から読んでください。
 
@@ -129,6 +153,13 @@ prompts/implement_feature.md を参照してください。
 ## 汎用プロンプト一覧
 
 実在する prompt の用途別一覧は [`prompts/README.md`](../prompts/README.md) を参照してください。各 prompt の出力先、参照ルール、変更範囲、作業手順は、その prompt 自身が正本です。
+
+prompt は、渡し方で2種類に分かれます。
+
+| prompt | 誰が渡すか |
+|---|---|
+| [`run_stage.md`](../prompts/run_stage.md)（Worker）、[`review_stage.md`](../prompts/review_stage.md)（Reviewer） | **runner が渡します。** オートモードの入口。人間が普段直接渡す必要はありません（単独で手動実行することもできます） |
+| そのほかの個別 prompt（`create_*` / `implement_*` / `review_*` など） | **人間が選んで渡します。** このうち、stage に設定されたものは Worker の委譲先にもなります（対応は `70_feature_loop.md` が正本） |
 
 バグ対応の prompt を選ぶ場合は、全体の導線として [`docs/tutorials/040_bug_fix_flow.md`](tutorials/040_bug_fix_flow.md) も参照してください。
 

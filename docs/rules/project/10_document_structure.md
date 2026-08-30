@@ -112,8 +112,8 @@ docs/
         24_review_checklist.md
         25_review_result.md
         gates/
-          0001_20260822T161400_g0.md
-          0002_20260822T163000_cp1.md
+          0001_20260822T161400_cp1.md
+          0002_20260822T163000_g1.md
     bugs/
       <bug_id>/
         10_bug_report.md

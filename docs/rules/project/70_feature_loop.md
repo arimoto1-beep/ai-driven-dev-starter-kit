@@ -32,7 +32,7 @@ stage、Gate、判定値、baseline、役割ごとの変更範囲、モデル選
 | モード | 進め方 | 使うもの |
 |---|---|---|
 | **マニュアルモード** | 人間が個別プロンプトを1つずつ実行する（従来どおり） | `prompts/create_*.md`、`prompts/implement_*.md`、`prompts/review_*.md` |
-| **オートモード** | runner が Worker と Reviewer を交互に起動し、Gate で判定する | `tools/feature_runner.py`、`prompts/run_stage.md`、`prompts/review_stage.md` |
+| **オートモード** | runner が各 stage で Worker と Reviewer を分離して起動し、Gate で判定する | `tools/feature_runner.py`、`prompts/run_stage.md`、`prompts/review_stage.md` |
 
 - **既存の個別プロンプトは、マニュアルモードとしてそのまま維持します。** オートモードの導入で廃止しません。
 - オートモードの Worker は、**手順を自分で定義せず、既存の個別プロンプトへ委譲します。** 成果物の作り方の正本は、引き続き個別プロンプトです。

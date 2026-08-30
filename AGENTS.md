@@ -45,12 +45,14 @@ AIへコードを丸投げする仕組みではありません。最終的な責
 
 | 作業の性質 | 起点 |
 |---|---|
-| **実装・変更**（仕様変更を含む） | `core/10_workflow.md`、`core/30_change_safety.md`、`project/20_workflow.md`、`project/30_development_rules.md`、`project/40_testing_rules.md`、`project/50_ai_permissions.md` |
-| **レビュー・承認** | `core/20_approval_and_review.md`、`project/20_workflow.md`、`project/25_review_policy.md`、`project/50_ai_permissions.md` |
+| **実装・変更**（仕様変更を含む） | `core/10_workflow.md`、`core/30_change_safety.md`、`project/20_workflow.md`、`project/30_development_rules.md`、`project/40_testing_rules.md`、`project/50_ai_permissions.md`（feature オートモードで進める場合は `project/70_feature_loop.md` も） |
+| **レビュー・承認** | `core/20_approval_and_review.md`、`project/20_workflow.md`、`project/25_review_policy.md`、`project/50_ai_permissions.md`（Gate記録を読む・作る場合は `project/70_feature_loop.md` も） |
 | **補助コンテキスト** | `core/40_official_docs_and_context.md`、`project/10_document_structure.md`、`project/50_ai_permissions.md` |
 | **記録・報告** | `core/50_records_and_reporting.md`、`project/10_document_structure.md`、`project/50_ai_permissions.md` |
 
 （パスはすべて `docs/rules/` 配下です）
+
+**feature 単位の新規開発をオートモード（`tools/feature_runner.py`）で進める場合、またはその可能性がある場合は、`project/70_feature_loop.md` も読んでください。** stage、Gate、判定値、承認を置く位置、stage ごとの変更範囲、Gate記録の正本です。バグ対応や文書修正など、feature オートモードを使わない作業では不要です。
 
 これは task プロンプトがない場合の入口にすぎません。**どの分類か判断できない場合、AIが勝手に決めず人間へ確認してください。**
 

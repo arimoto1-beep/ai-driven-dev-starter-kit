@@ -10,7 +10,7 @@
 |---|---|---|---|
 | [`quality_run.py`](quality_run.py) | 指定した検証コマンドを実行し、その開始と結果を記録する | task ID、実行するコマンド | [`quality/events/`](../quality/events/) 配下の JSON Lines ファイル |
 | [`quality_report.py`](quality_report.py) | 検証記録とレビュー結果を集約する | `quality/events/` と `docs/` 配下のレビュー結果 | [`quality/report.md`](../quality/report.md) |
-| [`feature_runner.py`](feature_runner.py) | feature オートモードの runner。Worker と Reviewer を別プロセスで交互に起動し、Gate記録で状態遷移する | `docs/rules/project/70_feature_loop.md` の設定ブロック、対象 feature の `gates/` | 対象 feature の `gates/` 配下の Gate記録 |
+| [`feature_runner.py`](feature_runner.py) | feature オートモードの runner。Worker と Reviewer を別プロセスとして分離して起動し、Gate記録で状態遷移する | `docs/rules/project/70_feature_loop.md` の設定ブロック、対象 feature の `gates/` | 対象 feature の `gates/` 配下の Gate記録 |
 
 生成物の見方と各ファイルの位置づけは、[`quality/README.md`](../quality/README.md) を参照してください。ツールの引数や読み取り処理の詳細は各スクリプト自身にあります。
 

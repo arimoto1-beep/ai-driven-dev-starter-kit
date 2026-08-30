@@ -2,6 +2,14 @@
 
 このチュートリアルでは、新しい CLI アプリ `cli_text_tools` を1から作ります。
 
+> **このチュートリアルはマニュアルモードです。** 人間が個別プロンプトを1つずつ実行し、工程を細かく確認しながら進めます。
+> feature 新規開発には**オートモード**（runner が Worker と Reviewer を分離して起動する進め方）もあり、
+> そちらの一周は [`005_automode_first_feature.md`](005_automode_first_feature.md) で体験できます。
+> **どちらも現役の進め方です。** マニュアルモードは新しい feature でも利用できます。
+> 位置づけは [`../rules/project/20_workflow.md`](../rules/project/20_workflow.md) を参照してください。
+> このチュートリアルに出てくる**実装着手承認欄**は、マニュアルモードで使う承認です。
+> オートモードでは使わず、CP1 の仕様承認と G2 の判定が実装開始条件になります（`../rules/project/70_feature_loop.md`）。
+
 主目的は、docs / features / tasks.md の構造をゼロから作れるようにすることです。
 実装まで完走させることが目的ではありません。
 `10_overview.md` で command/app 全体を整理し、2つの feature に分ける初期ドキュメント構造を作るところまでを体験します。

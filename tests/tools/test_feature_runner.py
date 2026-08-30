@@ -1861,6 +1861,7 @@ def test_current_workflow_docs_do_not_reference_removed_g0_stage():
         REPO_ROOT / "prompts/run_stage.md",
         REPO_ROOT / "prompts/review_stage.md",
         REPO_ROOT / "docs/rules/project/70_feature_loop.md",
+        REPO_ROOT / "docs/rules/project/10_document_structure.md",
         REPO_ROOT / "docs/templates/gate_record_template.md",
         REPO_ROOT / "tools/README.md",
     ]

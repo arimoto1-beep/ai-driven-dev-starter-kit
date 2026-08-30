@@ -1,6 +1,10 @@
 # ドキュメント構成
 
-この文書は、スターターキット全体像を人間が理解するための概要です。
+この文書は、**リポジトリの構造と各成果物の役割**を人間が理解するための概要です。「どこに何があり、それぞれ何を書くファイルか」を説明します。
+
+- feature 開発が**どう流れるか**（オートモードの体験と最初の一歩） → [`../README.md`](../README.md)
+- オートモードの**詳細仕様**（stage、Gate、判定値、モデル選択） → [`rules/project/70_feature_loop.md`](rules/project/70_feature_loop.md)
+
 **AIが守るルールの正本は `docs/rules/` 配下です**（索引: [rules/README.md](rules/README.md)）。この文書はルールの正本ではありません。
 
 このリポジトリでは、コマンド/アプリ単位で docs、src、tests を対応させます。
@@ -44,6 +48,8 @@ docs/
         23_test_plan.md
         24_review_checklist.md
         25_review_result.md
+        gates/
+          <連番4桁>_<タイムスタンプ>_<stage小文字>.md
     bugs/
       <bug_id>/
         10_bug_report.md
@@ -56,6 +62,7 @@ docs/
 `25_review_result.md` は、feature 単体レビューを行った場合に作成します。
 `12_command_review_result.md` は、command/app 全体レビューを行った場合に作成します。
 まだレビューしていない場合は、無理に作成しません。
+`gates/` は、オートモード（`tools/feature_runner.py`）で feature を進めた場合に作成されます。マニュアルモードだけで進めた feature には存在しません。
 
 ---
 
@@ -73,6 +80,7 @@ docs/
 | `23_test_plan.md` | feature 単体テストの観点を書く |
 | `24_review_checklist.md` | feature 単体レビュー観点を書く。末尾に実装着手承認欄を含む。レビュー結果は書き込まない |
 | `25_review_result.md` | feature 単体レビュー結果、指摘事項、最終判定を書く |
+| `gates/` 配下 | オートモードの Gate記録。各段階の判定、人間の承認欄、停止の理由を1件1ファイルで残す。**確定した記録は書き換えず、新しい記録を追加する。** ひな形は `docs/templates/gate_record_template.md`、記録項目の正本は `docs/rules/project/70_feature_loop.md` |
 | `10_bug_report.md` | バグ報告を整理する。原因断定や修正はしない |
 | `20_bug_investigation.md` | 仕様・設計・実装・テストを確認し、原因仮説と影響範囲を整理する。修正はしない |
 | `30_bug_fix_plan.md` | 修正対象、テスト方針、確認コマンド、人間承認欄を整理する。承認前に実装しない |
@@ -115,10 +123,19 @@ docs/
 
 ## 実装前承認ゲート
 
-feature 実装（`prompts/implement_feature.md`）に進む前に、`24_review_checklist.md` 末尾の実装着手承認欄を人間が確認してチェックを入れる。
-承認欄に未チェック項目がある場合、AIは実装を開始せず STOP する。AIが勝手にチェックを入れて進んではならない。
+feature 実装（`prompts/implement_feature.md`）に進む前に満たすべき条件は、`24_review_checklist.md` の「実装開始条件」に記載された方式によって異なる。
 
-承認境界と停止判断の正本 → `docs/rules/core/20_approval_and_review.md`／承認欄の場所 → `docs/rules/project/50_ai_permissions.md`
+| 方式 | 実装開始条件 |
+|---|---|
+| `manual`（既定。記載がない場合を含む） | `24_review_checklist.md` 末尾の「実装着手承認欄」が全項目チェック済み |
+| `auto` | **CP1 の仕様承認（現在の `20_spec.md` と同一 baseline）AND 最新 G2 Gate記録の `verdict: PASS`** |
+
+`manual` では、承認欄に未チェック項目がある場合、AIは実装を開始せず STOP する。
+`auto` では、この承認欄を使用しない。**未チェックのまま残ることが正常であり、STOP の理由にはならない。**
+
+**どちらの方式でも、AIが承認欄にチェックを入れて進んではならない。**
+
+実装開始条件の正本 → `docs/rules/project/70_feature_loop.md`／承認境界と停止判断の正本 → `docs/rules/core/20_approval_and_review.md`／承認欄の場所 → `docs/rules/project/50_ai_permissions.md`
 
 ---
 
@@ -204,6 +221,16 @@ feature の詳細ロジック、正常系、異常系、境界値などを確認
 
 `prompts/` 直下には、実プロジェクトでも使う汎用プロンプトだけを配置します。チュートリアル専用プロンプトは置きません。
 
+プロンプトは、使われ方で2種類に分かれます。
+
+| 種類 | prompt | 位置づけ |
+|---|---|---|
+| runner から使われる | `run_stage.md`（Worker）、`review_stage.md`（Reviewer） | オートモードで `tools/feature_runner.py` が別プロセスとして起動する入口。`run_stage.md` は成果物の作り方を自分で定義せず、**その stage に設定された作業用プロンプトへ委譲する** |
+| 人間が選んで渡す | 下記の個別プロンプト（`create_*` / `implement_*` / `review_*` など） | マニュアルモードで人間が1つずつ実行する。**このうち stage に設定されたものは、Worker の委譲先にもなる** |
+
+どの stage がどのプロンプトへ委譲するかは、`docs/rules/project/70_feature_loop.md` の設定が正本です。ここには一覧を複製しません。
+選び方と渡し方は `docs/how_to_use_prompts.md` を参照してください。
+
 汎用プロンプトは直接書き換えず、チャットで参照するプロンプトのパスと対象情報を渡して使います。
 各プロンプトの冒頭には `## 必須参照ルール` があり、**その作業でAIが読むルール文書の一覧**が列挙されています。
 詳しくは `docs/how_to_use_prompts.md` を参照してください。
@@ -242,6 +269,15 @@ feature の詳細ロジック、正常系、異常系、境界値などを確認
 
 このスターターキットでは、feature 単体の単体試験を基本にします。
 必要に応じて、command/app 単位の結合試験計画と結合試験も扱います。
+
+進め方は2つあります。**どちらも現役の選択肢です。**
+
+| 進め方 | 内容 | 詳しく |
+|---|---|---|
+| **オートモード** | `tools/feature_runner.py` が各AI工程で Worker と Reviewer を分離して起動し、段階ごとに Gate で判定する。人間は仕様承認と受け入れを判断する | `rules/project/70_feature_loop.md`、`../tools/README.md` |
+| **マニュアルモード** | 人間が個別プロンプトを1つずつ実行する。新規 feature でも利用できる | `rules/project/20_workflow.md`、`../prompts/README.md` |
+
+下記は、どちらの進め方でも共通の対象範囲です。
 
 対象にするもの:
 

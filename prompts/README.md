@@ -8,7 +8,7 @@
 
 ## オートモード（feature 収束ループ）
 
-`tools/feature_runner.py` が、この2本を別プロセスで交互に起動します。単独で手動実行することもできます。
+`tools/feature_runner.py` が、この2本を別プロセスとして分離して起動します。Reviewer だけを動かす実行もあります（`--spec-review` / `--review-current`）。単独で手動実行することもできます。
 仕組みの正本は [`docs/rules/project/70_feature_loop.md`](../docs/rules/project/70_feature_loop.md) です。
 
 | prompt | 用途 |

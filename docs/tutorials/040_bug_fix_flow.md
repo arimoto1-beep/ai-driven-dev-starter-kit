@@ -2,6 +2,11 @@
 
 このチュートリアルでは、実装済みサンプル `cli_text_counter` を題材に、バグを見つけたときにいきなり修正せず、報告、調査、修正計画、人間承認、実装の順に進める流れを確認します。
 
+> **このチュートリアルはマニュアルモードです。** 人間が個別プロンプトを1つずつ実行します。
+> **feature 新規開発とは別のフロー**なので、その feature をオートモードで作った場合でも、この流れで進められます。
+> 進め方の位置づけは [`../rules/project/20_workflow.md`](../rules/project/20_workflow.md)、
+> オートモードでの feature 新規開発は [`005_automode_first_feature.md`](005_automode_first_feature.md) を参照してください。
+
 このチュートリアルは、バグ修正フローの説明が目的です。`src/`、`tests/`、`docs/cli_text_counter/features/` は変更しません。
 
 `docs/cli_text_counter/bugs/bug_001/` 配下には、このフローを実際に回したサンプルドキュメント（`10_bug_report.md`、`20_bug_investigation.md`、`30_bug_fix_plan.md`）が配置済みです。各ステップの説明と合わせて参照してください。

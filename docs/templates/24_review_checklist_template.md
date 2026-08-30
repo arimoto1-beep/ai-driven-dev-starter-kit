@@ -87,7 +87,7 @@ command/app 全体の最終確認は `prompts/review_command.md` に委ねます
 | 方式 | 実装開始条件 | 承認の記録先 |
 |---|---|---|
 | `manual` | 下の「実装着手承認欄」が全項目チェック済み | このファイル |
-| `auto` | **CP1 の下流進行承認 AND 最新 G2 Gate記録の `verdict: PASS`** | `<対象機能フォルダ>/gates/` の CP1 / G2 Gate記録 |
+| `auto` | **CP1 の仕様承認（現在の `20_spec.md` と同一 baseline）AND 最新 G2 Gate記録の `verdict: PASS`** | `<対象機能フォルダ>/gates/` の CP1 / G2 Gate記録 |
 
 **この記載により、後から読む人が、どちらの方式で実装が開始されたかを判別できます。**
 

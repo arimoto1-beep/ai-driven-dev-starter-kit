@@ -122,9 +122,44 @@ runner は最新 Gate記録の front matter しか見ておらず、成果物フ
 **人間の確認と判断が必要である。AIはここから先へ進めていない。**
 
 1. 実装した変更（`04_implementation.md` の一覧）をレビューする
-2. 検証用サンドボックス `cli_mask_rework/`（docs / src / tests）を残すか削除するか決める
+2. ~~検証用サンドボックス `cli_mask_rework/`（docs / src / tests）を残すか削除するか決める~~
+   → **2026-08-30、人間の判断により削除した**（下記「検証用サンドボックスの削除」）
 3. 未決事項のうち、`artifacts_hash` 欠落時の扱いを整理するか決める
 4. コミットする（**今回はコミットも tag も作成していない**）
+
+---
+
+## 検証用サンドボックスの削除（2026-08-30 追記）
+
+**この作業で使った検証用サンドボックス `cli_mask_rework` を削除しました。**
+判断したのは人間で、`20260830_v2_document_refresh` の Phase 4 調査を受けた決定です。
+
+### 削除したもの
+
+```text
+docs/cli_mask_rework/    （10_overview.md、features/ascii_digit_masker/ 一式、gates/ 8件）
+src/cli_mask_rework/     （features/ascii_digit_masker.py、__init__.py）
+tests/cli_mask_rework/   （test_ascii_digit_masker.py。テスト6件）
+```
+
+### 削除してよいと判断した根拠
+
+- **`cli_text_masker` を丸ごと複製したサンドボックス**であり（`01_verification_method.md`）、
+  `src/.../ascii_digit_masker.py` は複製元とバイト単位で同一だった
+- **検証結果はこの作業メモに残っている。** 特に `--rework G2 --once` の実AI実行結果
+  （Gate記録 0008 の `triggered_by: REWORK`、`supersedes` が 0003 を指すこと、
+  `artifacts_hash` の往復）は `04_implementation.md`「実AIでの確認」に転記済み
+- 複製元の `cli_text_masker` は**実AI実行履歴例として残す**ことになったため、
+  ほぼ同一のディレクトリを2つ維持する理由がなくなった
+- リポジトリ内のどの正式導線からも参照されていなかった
+
+### この削除で失われたもの
+
+- **`--rework` を実行した Gate記録そのもの（0008）のファイル。**
+  front matter の要点は `04_implementation.md` に転記済みだが、記録の本文は残っていない
+- `tests/cli_mask_rework/` のテスト6件（複製元 `tests/cli_text_masker/` の6件は残っている）
+
+**Gate記録を別の場所へ丸ごとコピーはしていません。**
 
 ## 付随ファイル
 

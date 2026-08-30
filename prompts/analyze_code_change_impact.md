@@ -606,7 +606,7 @@
 **ルートA の場合:**
 
 - 正式資料の更新作業へは接続しない
-- 実装とテストの変更作業（対象 feature の実装であれば `prompts/implement_feature.md`。**実装着手承認欄の確認は通常どおり必要です**）
+- 実装とテストの変更作業（対象 feature の実装であれば `prompts/implement_feature.md`。**実装開始条件の確認は通常どおり必要です**。方式が `manual` なら実装着手承認欄、`auto` なら `docs/rules/project/70_feature_loop.md` の条件に従います）
 - `prompts/review_feature_source.md`
 - `python -m pytest`
 
