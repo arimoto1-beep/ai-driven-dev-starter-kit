@@ -131,6 +131,85 @@ runner 自身が処理継続を禁止した場合（Reviewer の変更範囲違�
 **実行前に、[`docs/rules/project/70_feature_loop.md`](../docs/rules/project/70_feature_loop.md) の設定ブロックへ `model_cheap` / `model_standard` / `model_strong` と `ai_command` を記入してください。**
 リポジトリへコミットしたくない場合は、同じ形式で `tools/feature_loop.local` へ書くと上書きされます（`.gitignore` 対象）。
 
+### Claude Code を使う場合の設定例
+
+条件を満たすAI CLI の**一例**です。**このスターターキットは Claude Code 専用ではありません。**
+インストールと認証の手順は [リポジトリの README](../README.md) を参照してください。
+
+#### 必要なオプション
+
+| 用途 | Claude Code のオプション |
+|---|---|
+| 非対話で1回だけ実行する | `-p`（`--print`） |
+| 使うモデルを指定する | `--model` |
+| 確認プロンプトなしで許可する操作を決める | `--permission-mode`、`--allowedTools` |
+
+オプションの正本は [Claude Code の CLI リファレンス](https://code.claude.com/docs/en/cli-reference) です。
+
+#### `ai_command` の例
+
+以下は、Git for Windowsを導入し、Claude CodeがBash toolを使う環境での例です。
+
+```text
+ai_command = claude,-p,{instruction},--model,{model},--permission-mode,acceptEdits,--allowedTools,Bash(python -m pytest *)
+```
+
+- カンマ区切りの argv テンプレートです。**shell を経由しないため、クォートは不要**です
+- `{instruction}` に指示文、`{model}` に実モデル名が入ります
+
+#### `model_*` の例
+
+`--model` はモデルのエイリアス（`haiku` / `sonnet` / `opus` など）と正式名のどちらも受け付けます。
+**エイリアスを使うと、モデル名が更新されても設定を書き換えずに済みます。**
+
+```text
+model_cheap    = haiku
+model_standard = sonnet
+model_strong   = opus
+```
+
+正式なモデルIDで固定することもできます。
+利用できるモデルIDは時期や契約によって変わるため、現在の Claude Code CLI リファレンス で確認してください。
+
+どのクラスにどのモデルを割り当てるかは利用者が決めます。
+
+#### 権限（permission）の考え方
+
+**オートモードでは、AI がファイルを読み書きし、CP3 ではテストを実行します。**
+非対話実行（`-p`）では**確認プロンプトに答えられない**ため、必要な操作を事前に許可しておく必要があります。
+許可がないと、AI が作業を完了できず runner が停止します。
+
+上記の例では、`acceptEdits` で作業ディレクトリ内のファイル編集などを自動承認し、
+`--allowedTools` で pytest の実行を追加で許可しています。
+
+| 指定 | 役割 |
+|---|---|
+| `--permission-mode acceptEdits` | ファイル編集や一部の一般的なファイル操作を自動承認する |
+| `--allowedTools "Bash(python -m pytest *)"` | `python -m pytest` に一致する Bash コマンドを追加で許可する |
+
+`acceptEdits` はファイル編集だけに限定されません。
+作業ディレクトリ内では `mkdir`、`touch`、`mv`、`cp` など一部の一般的なファイルシステム操作も自動承認されます。
+正確な範囲は Claude Code の公式permission仕様を確認してください。
+
+**すべてを無条件に許可する設定（`bypassPermissions` など）を既定として推奨しません。**
+必要な操作だけを許可し、**必要以上に強い権限を与えないでください。**
+
+> **これは設定例です。許可範囲は、各利用環境で確認して決めてください。**
+> 変更範囲のガードは runner 側でも働きますが（`stage_*_worker` / `stage_*_reviewer`）、
+> AI CLI に与える権限は利用者の責任で決める設定です。
+
+**Windows でネイティブに使う場合の注意**：Claude Code が実際にテスト実行に使うshellに合わせて、
+`Bash(...)` または `PowerShell(...)` の許可ルールを設定してください。
+
+Git for Windows を導入すると Bash tool を利用できます。
+未導入の場合は PowerShell tool が使われます。
+Git for Windows がある環境でも PowerShell tool を利用できる場合があるため、
+単純に「Git Bash がある＝Bashだけ」とは限りません。
+
+利用環境は `claude doctor` などで確認してください。
+
+権限モードと許可ルールの書式の正本は、Claude Code の公式ドキュメントです。
+
 ### モデル選択
 
 **どのモデルクラスを使うかは runner が決めます。利用者が役割ごとに決める必要はありません。**

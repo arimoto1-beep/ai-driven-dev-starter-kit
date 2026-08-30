@@ -74,6 +74,11 @@ ai_command = <AI CLI>,<非対話実行のオプション>,{instruction},<モデ�
 リポジトリへコミットしたくない場合は、同じ形式で `tools/feature_loop.local` へ書けます。
 記入例と詳しい手順は [`../../tools/README.md`](../../tools/README.md) を参照してください。
 
+> **AI CLI をまだ用意していない場合**：具体例として Claude Code のインストールと認証の手順が
+> [`../../README.md`](../../README.md) に、`ai_command` と `model_*` の設定例が
+> [`../../tools/README.md`](../../tools/README.md) にあります。
+> **このスターターキットは特定のAI CLI 専用ではありません。**
+
 ### 設定できているかの確認
 
 設定が終わったら、まず何も実行しない確認から始めます。このチュートリアルでは、

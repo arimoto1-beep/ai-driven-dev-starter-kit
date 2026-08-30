@@ -154,6 +154,121 @@ ai_command = <AI CLI>,<非対話実行のオプション>,{instruction},<モデ�
 
 **特定のベンダーやツールに限定しません。** 上記を満たすAI CLI であれば利用できます。記入例と設定手順は [tools/README.md](tools/README.md) にあります。
 
+### オートモードを動かすための準備
+
+オートモードを利用するには、Python、Git、非対話実行できるAI CLIを用意します。
+
+以下では Windows を例に説明します。
+
+#### 1. Pythonを用意する
+
+このスターターキットのrunnerはPythonで動きます。
+
+まずPythonが利用できることを確認します。
+
+```text
+python --version
+```
+
+Pythonが入っていない場合は、Python公式サイトからインストールしてください。
+
+[https://www.python.org/downloads/windows/](https://www.python.org/downloads/windows/)
+
+Windowsでは、Python公式の **Python Install Manager** を利用できます。
+
+テストで使用する依存パッケージをインストールします。
+
+```text
+python -m pip install -r requirements.txt
+```
+
+runner本体はPython標準ライブラリのみで動作しますが、
+テスト実行には `requirements.txt` に記載された `pytest` を使用します。
+
+#### 2. Gitを用意する
+
+このスターターキットはGitリポジトリとして配布しています。
+
+Gitが未導入の場合は、Git for Windowsをインストールします。
+
+https://git-scm.com/download/win
+
+インストール後、確認します。
+
+```text
+git --version
+```
+
+Git for Windowsを導入するとGit Bashも利用できます。
+
+後述するClaude Codeの設定例では、Git Bashの `Bash(...)` を使う例を掲載しています。
+
+#### 3. AI CLIを用意する
+
+オートモードでは、非対話で起動できるAI CLIをrunnerから呼び出します。
+
+**特定のベンダーやツールには限定しません。**
+
+以下では具体例としてClaude Codeを使います。
+
+##### Claude Codeをインストールする
+
+Windows PowerShell：
+
+```powershell
+irm https://claude.ai/install.ps1 | iex
+```
+
+インストールを確認します。
+
+```text
+claude --version
+```
+
+うまく動かない場合は診断できます。
+
+```text
+claude doctor
+```
+
+初回はClaude Codeを起動し、画面の案内に従って認証します。
+
+```text
+claude
+```
+
+Claude.aiの無料プランにはClaude Codeは含まれません。
+対応するClaude.aiプラン、Consoleアカウント、またはAmazon Bedrockなどの対応する外部APIプロバイダが必要です。
+
+Claude Code自体はGit for Windowsなしでも動作します。
+ただし、このスターターキットで後述するClaude Codeの設定例はGit Bashの `Bash(...)` を基準にしています。
+**設定例をそのまま利用する場合はGit for Windowsの導入を推奨します。**
+
+Claude Codeのインストール方法の正本：
+
+https://code.claude.com/docs/en/setup
+
+#### 4. スターターキット側を設定する
+
+Python、Git、AI CLIの準備ができたら、
+
+* `model_cheap`
+* `model_standard`
+* `model_strong`
+* `ai_command`
+
+を設定します。
+
+Claude Codeを使う場合の具体的な設定例は [tools/README.md](tools/README.md) を参照してください。
+
+#### 5. オートモードを試す
+
+環境準備ができたら、最初のfeatureを作るチュートリアルへ進みます。
+
+[オートモードで最初のfeatureを作る](docs/tutorials/005_automode_first_feature.md)
+
+---
+
 実装言語や依存関係の設定は [実装ルール](docs/rules/project/30_development_rules.md)、テスト環境と検証方法は [テストルール](docs/rules/project/40_testing_rules.md) を参照してください。
 
 ---
