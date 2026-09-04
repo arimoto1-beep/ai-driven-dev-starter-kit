@@ -32,7 +32,7 @@ No third-party packages are required. This script performs no network access.
 
 Pricing:
     Embedded standard first-party Claude API token prices, checked 2026-09-03.
-    Pricing changes over time, so update PRICE_RULES when necessary.
+    Pricing changes over time, so update PRICE_RULES when necessary.\n    Bedrock model IDs can be recognized, but Bedrock prices are not selected\n    automatically; replace PRICE_RULES for your own Bedrock pricing profile.
 
 Important:
     This is an estimate, not a billing statement. It intentionally does not
@@ -54,13 +54,20 @@ from datetime import datetime, timedelta
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Iterable, Optional
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 PRICING_CHECKED = "2026-09-03"
 
 
 # ---------------------------------------------------------------------------
 # Pricing: USD per 1 million tokens
 # Columns: base input, 5m cache write, 1h cache write, cache read, output
+#
+# IMPORTANT:
+# These built-in prices are for the Anthropic API pricing profile checked on
+# PRICING_CHECKED. Model-ID matching also accepts common Amazon Bedrock IDs,
+# but Bedrock pricing is NOT selected automatically. If you use Bedrock,
+# replace PRICE_RULES with the prices for your own inference profile / region.
+#
 # Source checked 2026-09-03:
 # https://platform.claude.com/docs/en/about-claude/pricing
 # ---------------------------------------------------------------------------
@@ -83,14 +90,36 @@ class PriceRule:
 
 def model_pattern(family: str, version: str) -> re.Pattern[str]:
     """
-    Match model aliases and date-suffixed Claude API IDs, e.g.
+    Match both Anthropic API model IDs and common Amazon Bedrock model IDs.
+
+    Examples:
       claude-opus-5
       claude-opus-5-20260805
-      claude-sonnet-4-5
-      claude-sonnet-4-5-20250929
+      claude-haiku-4-5-20251001
+
+      anthropic.claude-haiku-4-5-20251001-v1:0
+      jp.anthropic.claude-haiku-4-5-20251001-v1:0
+      global.anthropic.claude-haiku-4-5-20251001-v1:0
+
+    This only broadens model-ID recognition. It does NOT automatically switch
+    the pricing table for Bedrock. PRICE_RULES remains the source of truth for
+    prices, so Bedrock users should replace those values with the pricing for
+    their own inference profile / region.
     """
     prefix = rf"claude-{re.escape(family)}-{re.escape(version)}"
-    return re.compile(rf"^{prefix}(?:-\d{{8}})?$", re.IGNORECASE)
+
+    provider_prefix = (
+        r"(?:(?:global|us|eu|au|jp|apac)\.)?"
+        r"anthropic\."
+    )
+
+    return re.compile(
+        rf"^(?:{provider_prefix})?"
+        rf"{prefix}"
+        rf"(?:-\d{{8}})?"
+        rf"(?:-v\d+(?::\d+)?)?$",
+        re.IGNORECASE,
+    )
 
 
 PRICE_RULES = [
